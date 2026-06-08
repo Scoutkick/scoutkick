@@ -1,0 +1,17 @@
+app:
+  name: scoutkick
+  routes:
+    - path: /
+      service: scoutkick-api
+
+services:
+  - name: scoutkick-api
+    type: web
+    build_command: pip install -r requirements.txt
+    run_command: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    env:
+      - key: PYTHONPATH
+        value: .
+    ports:
+      - port: 8000
+        protocol: http
