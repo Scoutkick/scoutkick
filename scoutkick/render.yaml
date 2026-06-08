@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: scoutkick
+    env: python
+    buildCommand: pip install -r scoutkick/requirements.txt
+    startCommand: uvicorn scoutkick.backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHONPATH
+        value: .
+    disk:
+      name: cache
+      mountPath: /opt/render/project/src/cache
+      sizeGB: 1
