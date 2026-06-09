@@ -353,3 +353,18 @@ class SQLiteStorage:
             r["component_means"] = None
         r.pop("component_means_json", None)
         return r
+
+    def load_all_seasons_meta(self) -> List[Dict]:
+        conn = self._connect()
+        rows = conn.execute("SELECT * FROM seasons ORDER BY season").fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            r = dict(row)
+            if r["component_means_json"]:
+                r["component_means"] = np.array(json.loads(r["component_means_json"]))
+            else:
+                r["component_means"] = None
+            r.pop("component_means_json", None)
+            result.append(r)
+        return result

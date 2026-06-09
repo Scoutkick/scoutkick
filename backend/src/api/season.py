@@ -20,10 +20,8 @@ def _serialize_meta(meta: dict) -> dict:
 @router.get("/v1/seasons")
 def list_seasons():
     storage = get_storage()
-    meta = storage.load_season_meta()
-    if meta is None:
-        return []
-    return [_serialize_meta(meta)]
+    all_meta = storage.load_all_seasons_meta()
+    return [_serialize_meta(m) for m in all_meta]
 
 
 @router.get("/v1/season/{season}")
