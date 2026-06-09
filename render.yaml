@@ -7,6 +7,8 @@ services:
     envVars:
       - key: PYTHONPATH
         value: .
+      - key: EPA_DB_PATH
+        value: /opt/render/project/cache/epa_data.db
     disk:
       name: cache
       mountPath: /opt/render/project/cache
