@@ -10,6 +10,7 @@ class SQLiteStorage:
     def __init__(self, db_path: str, season_id: str):
         self.db_path = Path(db_path)
         self.season_id = season_id
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_tables()
 
     def _connect(self) -> sqlite3.Connection:
