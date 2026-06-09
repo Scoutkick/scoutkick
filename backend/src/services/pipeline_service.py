@@ -10,7 +10,7 @@ from backend.src.data.cleaner import CleanerRegistry
 from backend.src.services.epa_service import EPAEngine
 from backend.src.services.calibrate import calibrate_score_sd, calibrate_component_means
 from backend.src.services.init_epa import get_init_epa, compute_norm_epa
-from backend.src.storage.sqlite_storage import SQLiteStorage
+from backend.src.storage import create_storage
 
 
 class EPAPipeline:
@@ -20,7 +20,7 @@ class EPAPipeline:
         self.config = get_season_config(season_id)
         self.cleaner = CleanerRegistry.get_cleaner(season_id)
         self.engine = EPAEngine(config=self.config)
-        self.storage = SQLiteStorage(db_path, season_id)
+        self.storage = create_storage(season_id, db_path)
         self.do_calibrate = calibrate
 
     def _unique_teams(self, matches: List[Dict]) -> Set[int]:

@@ -1,66 +1,48 @@
-import asyncio
 import os
-import sys
-import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from backend.src.api.router import api_router
-from backend.src.core.config import SEASON_CONFIGS
-from backend.src.services.pipeline_service import EPAPipeline
+from backend.src.api.data import router as data_router, pipeline_status
+from backend.src.storage import create_storage
 
 
-pipeline_status: dict = {"state": "pending", "error": None}
+def _check_db_has_data() -> bool:
+    try:
+        storage = create_storage("2025")
+        return len(storage.load_all_seasons_meta()) > 0
+    except Exception:
+        return False
+
+
+def _get_seasons_in_db() -> list[str]:
+    try:
+        storage = create_storage("2025")
+        return [m["season"] for m in storage.load_all_seasons_meta()]
+    except Exception:
+        return []
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    seasons_env = os.environ.get("EPA_SEASONS")
-    if seasons_env:
-        seasons = [s.strip() for s in seasons_env.split(",") if s.strip()]
+    db_path = os.environ.get("EPA_DB_PATH") or os.path.join(
+        os.getcwd(), "cache", "epa_data.db",
+    )
+    has_data = _check_db_has_data()
+    if not has_data:
+        print(
+            f"[startup] WARNING: DB is empty ({db_path}). "
+            "POST /v1/data/run to populate."
+        )
     else:
-        seasons = sorted(SEASON_CONFIGS.keys())
-    db_path = os.environ.get("EPA_DB_PATH", "cache/epa_data.db")
-    print(f"[startup] Pipeline will process seasons: {seasons}")
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run_pipelines, seasons, db_path)
+        print(f"[startup] DB has existing data — serving. ({db_path})")
     yield
-
-
-def _run_pipelines(seasons: list[str], db_path: str):
-    global pipeline_status
-    results = {}
-    for season in seasons:
-        pipeline_status["current_season"] = season
-        pipeline_status["state"] = "running"
-        print(f"\n{'='*60}")
-        print(f"[startup] Running pipeline for season {season} (db={db_path})...")
-        print(f"{'='*60}")
-        try:
-            pipeline = EPAPipeline(season, db_path=db_path)
-            engine = pipeline.run()
-            if engine:
-                teams = list(engine.epas.keys())
-                print(f"[startup] Season {season} complete: {len(teams)} teams trained")
-                results[season] = {"teams": len(teams), "error": None}
-            else:
-                print(f"[startup] Season {season}: no matches found")
-                results[season] = {"teams": 0, "error": "no matches"}
-        except Exception as e:
-            traceback.print_exc()
-            print(f"[startup] Season {season} failed: {e}", file=sys.stderr)
-            results[season] = {"teams": 0, "error": str(e)}
-    pipeline_status["state"] = "done"
-    pipeline_status["results"] = results
-    total = sum(r["teams"] for r in results.values())
-    print(f"\n{'='*60}")
-    print(f"[startup] All pipelines complete. Total teams trained: {total}")
-    print(f"{'='*60}")
 
 
 app = FastAPI(title="scoutkick EPA API", version="0.1.0", lifespan=lifespan)
 app.include_router(api_router)
+app.include_router(data_router)
 
 
 @app.get("/")
@@ -76,3 +58,16 @@ def root():
 @app.get("/v1/pipeline")
 def get_pipeline_status():
     return pipeline_status
+
+
+@app.get("/v1/health")
+def health():
+    has_data = _check_db_has_data()
+    seasons_in_db = _get_seasons_in_db()
+    return {
+        "status": "ok" if has_data else "degraded",
+        "db_has_data": has_data,
+        "seasons": seasons_in_db,
+        "pipeline": pipeline_status["state"],
+        "pipeline_running": pipeline_status["state"] == "running",
+    }

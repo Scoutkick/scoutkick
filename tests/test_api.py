@@ -124,7 +124,9 @@ class TestAPIEvents(WithServer):
 class TestAPISeasons(WithServer):
     def test_list_seasons(self):
         resp = json.loads(urllib.request.urlopen(f"{API_BASE}/v1/seasons").read())
-        self.assertIsInstance(resp, list)
+        self.assertIn("value", resp)
+        self.assertIn("count", resp)
+        self.assertIsInstance(resp["value"], list)
 
     def test_get_season(self):
         resp = json.loads(urllib.request.urlopen(f"{API_BASE}/v1/season/2025").read())

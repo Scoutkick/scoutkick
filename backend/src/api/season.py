@@ -21,7 +21,8 @@ def _serialize_meta(meta: dict) -> dict:
 def list_seasons():
     storage = get_storage()
     all_meta = storage.load_all_seasons_meta()
-    return [_serialize_meta(m) for m in all_meta]
+    value = [_serialize_meta(m) for m in all_meta]
+    return {"value": value, "count": len(value)}
 
 
 @router.get("/v1/season/{season}")
