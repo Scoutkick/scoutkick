@@ -8,7 +8,7 @@ def get_matches(cleaner: BaseCleaner, cache: bool = True) -> List[Dict[str, Any]
 
     query = f"""
     query {{
-      eventsSearch(season: {cleaner.SEASON_ID}, limit: 100) {{
+      eventsSearch(season: {cleaner.SEASON_ID}, limit: 500) {{
         code
         type
         matches {{
