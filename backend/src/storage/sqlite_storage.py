@@ -5,12 +5,25 @@ from typing import Dict, List
 from backend.src.storage.base_storage import BaseStorage
 
 
+SCHEMA_VERSION = 1
+
+
 class SQLiteStorage(BaseStorage):
     def __init__(self, db_path: str, season_id: str):
         super().__init__(season_id)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_tables()
+        self._check_schema_version()
+
+    def _check_schema_version(self):
+        rows = self._execute("SELECT version FROM _schema_version")
+        db_version = rows[0]["version"] if rows else 0
+        if db_version != SCHEMA_VERSION:
+            raise RuntimeError(
+                f"DB schema v{db_version} != expected v{SCHEMA_VERSION}. "
+                f"Delete or migrate {self.db_path}."
+            )
 
     def _execute(self, sql: str, params: tuple = ()) -> List[dict]:
         conn = sqlite3.connect(str(self.db_path))
@@ -36,6 +49,10 @@ class SQLiteStorage(BaseStorage):
             conn.execute("DROP TABLE IF EXISTS team_matches")
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS _schema_version (
+                version INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS team_seasons (
                 team      INTEGER NOT NULL,
                 season    TEXT    NOT NULL,
@@ -92,5 +109,10 @@ class SQLiteStorage(BaseStorage):
                 updated_at        TEXT    NOT NULL DEFAULT (datetime('now'))
             );
         """)
+        conn.execute(
+            "INSERT INTO _schema_version (version) VALUES (?) "
+            "ON CONFLICT(rowid) DO UPDATE SET version = excluded.version",
+            (SCHEMA_VERSION,),
+        )
         conn.commit()
         conn.close()
