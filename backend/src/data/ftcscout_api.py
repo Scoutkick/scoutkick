@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Base URL for FTCscout GraphQL API
 GRAPHQL_URL = os.environ.get("FTCSCOUT_URL", "https://api.ftcscout.org/graphql")
-CACHE_DIR = os.environ.get("FTCSCOUT_CACHE_DIR", "cache/ftcscout")
+CACHE_DIR = os.environ.get("FTCSCOUT_CACHE_DIR", "backend/cache/ftcscout")
 
 session = Session()
 

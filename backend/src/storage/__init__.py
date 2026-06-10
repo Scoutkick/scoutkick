@@ -7,7 +7,7 @@ from backend.src.storage.sqlite_storage import SQLiteStorage
 
 def get_db_path() -> str:
     return os.environ.get("EPA_DB_PATH") or str(
-        Path.cwd() / "cache" / "epa_data.db",
+        Path.cwd() / "backend" / "cache" / "epa_data.db",
     )
 
 

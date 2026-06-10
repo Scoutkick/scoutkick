@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class EPAPipeline:
-    def __init__(self, season_id: str, db_path: str = "cache/epa_data.db",
+    def __init__(self, season_id: str, db_path: str = "backend/cache/epa_data.db",
                  calibrate: bool = True):
         self.season_id = season_id
         self.config = get_season_config(season_id)

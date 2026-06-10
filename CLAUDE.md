@@ -14,7 +14,7 @@ The project follows a decoupled Client-Server architecture to allow for independ
     - `src/storage/`: Database interfaces for persistence (Planned).
     - `src/api/`: REST/GraphQL interfaces for the frontend (Planned).
 - **`frontend/`**: The presentation layer (Next.js/Svelte) (Planned).
-- **`tests/`**: Verification scripts and unit tests (e.g., `test_engine.py`).
+- **`backend/tests/`**: Verification scripts and unit tests (e.g., `test_engine.py`).
 
 ---
 

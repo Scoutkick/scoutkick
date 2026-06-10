@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "scoutkick"
 version = "0.1.0"
 description = "EPA rating system for FIRST Tech Challenge (FTC)"
-readme = "README.md"
+readme = "../README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 
@@ -22,10 +22,5 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/anomalyco/EPA-FTC"
 
-[project.scripts]
-scoutkick = "scoutkick.scout:main"
-scoutkick-api = "scoutkick.backend.main:app"
-
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["scoutkick*"]
