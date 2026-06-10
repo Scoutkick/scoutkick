@@ -14,6 +14,7 @@ def list_events(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    """List all events in a season with aggregate EPA stats per event."""
     storage = get_storage(season)
     events_data = storage.load_team_events()
 
@@ -63,6 +64,7 @@ def list_events(
 
 @router.get("/v1/event/{event_code}")
 def get_event(event_code: str, season: str = Query("2025")):
+    """Get all teams and their EPA stats for a specific event."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     event_teams = [e for e in all_events if e["event_code"] == event_code]
@@ -102,6 +104,7 @@ def get_event_matches(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
+    """Get all matches for an event with per-team EPA deltas."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     teams_in_event = {e["team"] for e in all_events if e["event_code"] == event_code}

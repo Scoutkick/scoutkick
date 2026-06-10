@@ -19,6 +19,7 @@ def _serialize_meta(meta: dict) -> dict:
 
 @router.get("/v1/seasons")
 def list_seasons():
+    """List all seasons that have pipeline data stored in the database."""
     storage = get_storage()
     all_meta = storage.load_all_seasons_meta()
     value = [_serialize_meta(m) for m in all_meta]
@@ -27,6 +28,7 @@ def list_seasons():
 
 @router.get("/v1/season/{season}")
 def get_season(season: str):
+    """Get metadata (score_mean, score_sd, num_matches, etc.) for a specific season."""
     storage = get_storage(season)
     meta = storage.load_season_meta()
     if meta is None:

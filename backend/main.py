@@ -1,11 +1,14 @@
-import os
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from backend.src.api.router import api_router
 from backend.src.api.data import router as data_router, pipeline_status
+from backend.src.api.deps import get_db_path
 from backend.src.storage import create_storage
+
+logger = logging.getLogger(__name__)
 
 
 def _check_db_has_data() -> bool:
@@ -26,17 +29,14 @@ def _get_seasons_in_db() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db_path = os.environ.get("EPA_DB_PATH") or os.path.join(
-        os.getcwd(), "cache", "epa_data.db",
-    )
+    db_path = get_db_path()
     has_data = _check_db_has_data()
     if not has_data:
-        print(
-            f"[startup] WARNING: DB is empty ({db_path}). "
-            "POST /v1/data/run to populate."
+        logger.warning(
+            "DB is empty (%s). POST /v1/data/run to populate.", db_path,
         )
     else:
-        print(f"[startup] DB has existing data — serving. ({db_path})")
+        logger.info("DB has existing data — serving. (%s)", db_path)
     yield
 
 

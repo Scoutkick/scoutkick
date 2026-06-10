@@ -10,6 +10,8 @@ services:
         value: .
       - key: EPA_DB_PATH
         value: /opt/render/project/cache/epa_data.db
+      - key: FTCSCOUT_CACHE_DIR
+        value: /opt/render/project/cache/ftcscout
     disk:
       name: cache
       mountPath: /opt/render/project/cache

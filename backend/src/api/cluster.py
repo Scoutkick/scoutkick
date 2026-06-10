@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
 from backend.src.services.clustering import compute_clusters, get_team_cluster_detail, DEFAULT_N_CLUSTERS
@@ -16,6 +16,7 @@ def list_clusters(
     season: str = Query("2025", description="Season year"),
     n_clusters: int = Query(DEFAULT_N_CLUSTERS, ge=2, le=20, description="Number of playstyle clusters"),
 ):
+    """Compute playstyle clusters for all teams in a season. Groups teams by EPA vector similarity."""
     storage = get_storage(season)
     teams = storage.load_all_teams()
     if not teams:
@@ -31,6 +32,7 @@ def get_team_playstyle(
     season: str = Query("2025", description="Season year"),
     n_clusters: int = Query(DEFAULT_N_CLUSTERS, ge=2, le=20),
 ):
+    """Get playstyle cluster classification for a specific team."""
     storage = get_storage(season)
     params = storage.load_team(team)
     if params is None:
@@ -51,6 +53,7 @@ def get_complementarity(
     team2: int = Query(..., description="Second team number"),
     season: str = Query("2025", description="Season year"),
 ):
+    """Compute complementarity score between two teams. Measures how well their playstyles mesh."""
     storage = get_storage(season)
     result = complementarity_score(storage, team1, team2, season)
     if result is None:
@@ -67,6 +70,7 @@ def get_alliance_partners(
     season: str = Query("2025", description="Season year"),
     top_n: int = Query(10, ge=1, le=50, description="Number of top partners"),
 ):
+    """Find the best alliance partners for a team based on playstyle complementarity."""
     storage = get_storage(season)
     params = storage.load_team(team)
     if params is None:
@@ -81,6 +85,7 @@ def list_trajectory_clusters(
     season: str = Query("2025", description="Season year"),
     n_clusters: int = Query(4, ge=2, le=10, description="Number of trajectory clusters"),
 ):
+    """Compute growth trajectory clusters. Groups teams by how their EPA evolved across the season."""
     storage = get_storage(season)
     result = compute_trajectory_clusters(storage, season, n_clusters=n_clusters)
     if not result["clusters"]:
@@ -93,6 +98,7 @@ def get_team_trajectory_endpoint(
     team: int,
     season: str = Query("2025", description="Season year"),
 ):
+    """Get the EPA growth trajectory for a single team across their matches."""
     storage = get_storage(season)
     params = storage.load_team(team)
     if params is None:

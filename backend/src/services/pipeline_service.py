@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
@@ -11,6 +12,8 @@ from backend.src.services.epa_service import EPAEngine
 from backend.src.services.calibrate import calibrate_score_sd, calibrate_component_means
 from backend.src.services.init_epa import get_init_epa, compute_norm_epa
 from backend.src.storage import create_storage
+
+logger = logging.getLogger(__name__)
 
 
 class EPAPipeline:
@@ -66,146 +69,124 @@ class EPAPipeline:
             else:
                 rookies += 1
 
-        print(f"Initialized {initialized} returning + {rookies} rookie teams from {len(teams)} total.")
+        logger.info("Initialized %d returning + %d rookie teams from %d total.",
+                    initialized, rookies, len(teams))
 
-    def run(self):
-        print(f"--- Starting EPA Pipeline for {self.season_id} ---")
-
-        print("Fetching matches from FTCscout...")
-        matches = get_matches(self.cleaner)
-        print(f"Found {len(matches)} matches.")
-
-        if not matches:
-            print("No matches found. Exiting.")
-            return None
-
-        processed_keys = self.storage.get_processed_match_keys()
-        new_matches = [m for m in matches if (m["event"], str(m["match_id"])) not in processed_keys]
-        if len(new_matches) < len(matches):
-            print(f"Skipping {len(matches) - len(new_matches)} already-processed matches ({len(new_matches)} new).")
-        matches = new_matches
-
-        if not matches:
-            print("No new matches to process.")
-            existing = self.storage.load_all_teams()
-            if existing:
-                for team, params in existing.items():
-                    self.engine.set_team_state(
-                        team, params["mean"], params["var"],
-                        params["skew"], params["n"], params["count"],
-                    )
-            return self.engine
-
-        if self.do_calibrate:
-            score_sd = calibrate_score_sd(self.cleaner, self.season_id)
-            self.engine.score_sd = score_sd
-            component_means = calibrate_component_means(self.cleaner, self.season_id)
-            score_mean = float(component_means[0]) if len(component_means) > 0 else 0.0
-            print(f"Calibrated: score_sd={score_sd:.2f}, score_mean={score_mean:.2f}")
-        else:
-            component_means = np.zeros(len(self.config.dimensions))
-            component_means[0] = self.config.default_mean_total * 2
-            score_mean = component_means[0]
-            score_sd = self.engine.score_sd
-
+    def _load_existing_teams(self):
         existing = self.storage.load_all_teams()
         if existing:
-            print(f"Loaded {len(existing)} teams from storage (resuming).")
+            logger.info("Loaded %d teams from storage (resuming).", len(existing))
             for team, params in existing.items():
                 self.engine.set_team_state(
                     team, params["mean"], params["var"],
                     params["skew"], params["n"], params["count"],
                 )
+        return existing
 
-        all_teams = self._unique_teams(matches)
-        self._init_teams(all_teams, component_means, score_sd, score_mean)
+    def _fetch_matches(self) -> List[Dict]:
+        logger.info("Fetching matches from FTCscout...")
+        matches = get_matches(self.cleaner)
+        logger.info("Found %d matches.", len(matches))
+        return matches
 
+    def _filter_new_matches(self, matches: List[Dict]) -> List[Dict]:
+        processed_keys = self.storage.get_processed_match_keys()
+        new_matches = [m for m in matches if (m["event"], str(m["match_id"])) not in processed_keys]
+        if len(new_matches) < len(matches):
+            logger.info("Skipping %d already-processed matches (%d new).",
+                        len(matches) - len(new_matches), len(new_matches))
+        return new_matches
+
+    def _calibrate(self) -> tuple:
+        if not self.do_calibrate:
+            component_means = np.zeros(len(self.config.dimensions))
+            component_means[0] = self.config.default_mean_total * 2
+            return component_means, component_means[0], self.engine.score_sd
+
+        score_sd = calibrate_score_sd(self.cleaner, self.season_id)
+        self.engine.score_sd = score_sd
+        component_means = calibrate_component_means(self.cleaner, self.season_id)
+        score_mean = float(component_means[0]) if len(component_means) > 0 else 0.0
+        logger.info("Calibrated: score_sd=%.2f, score_mean=%.2f", score_sd, score_mean)
+        return component_means, score_mean, score_sd
+
+    def _group_and_sort_matches(self, matches: List[Dict]) -> Dict[str, List[Dict]]:
         events: Dict[str, List[Dict]] = defaultdict(list)
         for m in matches:
             events[m["event"]].append(m)
-
-        # Sort matches within each event by match_id
         for ec in events:
             events[ec].sort(key=lambda x: str(x["match_id"]))
+        return events
 
-        # team -> {event_code -> tracker}
-        event_tracker: Dict[int, Dict[str, Dict]] = defaultdict(dict)
-        total = sum(len(v) for v in events.values())
-        done = 0
-
-        for event_code in sorted(events.keys()):
-            event_matches = events[event_code]
-            event_type = event_matches[0].get("event_type") if event_matches else None
-            print(f"  Event {event_code} ({event_type}): {len(event_matches)} matches")
-
-            # Initialize event tracking for all teams in this event
+    def _init_event_trackers(self, events: Dict[str, List[Dict]]):
+        trackers: Dict[int, Dict[str, Dict]] = defaultdict(dict)
+        for event_code, event_matches in events.items():
             for m in event_matches:
                 for team in m["red_teams"] + m["blue_teams"]:
-                    if event_code not in event_tracker[team]:
+                    if event_code not in trackers[team]:
                         current_epa = self.engine.get_team(team).mean[0]
-                        event_tracker[team][event_code] = {
+                        trackers[team][event_code] = {
                             "epa_start": current_epa,
                             "epa_max": current_epa,
                             "epa_sum": 0.0,
                             "match_count": 0,
                         }
+        return trackers
 
-            for m in event_matches:
-                match_id = str(m["match_id"])
-                red_teams = m["red_teams"]
-                blue_teams = m["blue_teams"]
+    def _process_single_match(self, m: Dict, trackers: Dict) -> Dict[str, Dict]:
+        match_id = str(m["match_id"])
+        red_teams = m["red_teams"]
+        blue_teams = m["blue_teams"]
 
-                # Pre-match: record EPA for each team
-                pre_epas: Dict[int, float] = {}
-                pre_means: Dict[int, str] = {}
-                for team in red_teams + blue_teams:
-                    sn = self.engine.get_team(team)
-                    pre_epas[team] = float(sn.mean[0])
-                    pre_means[team] = json.dumps(sn.mean.tolist())
+        pre_epas: Dict[int, float] = {}
+        pre_means: Dict[int, str] = {}
+        for team in red_teams + blue_teams:
+            sn = self.engine.get_team(team)
+            pre_epas[team] = float(sn.mean[0])
+            pre_means[team] = json.dumps(sn.mean.tolist())
 
-                red_raw = self.cleaner.aggregate(m["red_scores"])
-                blue_raw = self.cleaner.aggregate(m["blue_scores"])
-                red_actual = self.cleaner.clean(red_raw)
-                blue_actual = self.cleaner.clean(blue_raw)
-                red_weights = self.cleaner.get_attribution_weights(m["red_scores"], red_teams)
-                blue_weights = self.cleaner.get_attribution_weights(m["blue_scores"], blue_teams)
-                win_prob, red_pred, blue_pred = self.engine.predict_match(red_teams, blue_teams)
-                attributions = self.engine.attribute_match(
-                    red_teams, blue_teams,
-                    red_actual, blue_actual,
-                    red_pred, blue_pred,
-                    red_weights=red_weights,
-                    blue_weights=blue_weights,
-                )
+        red_raw = self.cleaner.aggregate(m["red_scores"])
+        blue_raw = self.cleaner.aggregate(m["blue_scores"])
+        red_actual = self.cleaner.clean(red_raw)
+        blue_actual = self.cleaner.clean(blue_raw)
+        red_weights = self.cleaner.get_attribution_weights(m["red_scores"], red_teams)
+        blue_weights = self.cleaner.get_attribution_weights(m["blue_scores"], blue_teams)
+        win_prob, red_pred, blue_pred = self.engine.predict_match(red_teams, blue_teams)
+        attributions = self.engine.attribute_match(
+            red_teams, blue_teams,
+            red_actual, blue_actual,
+            red_pred, blue_pred,
+            red_weights=red_weights,
+            blue_weights=blue_weights,
+        )
 
-                tl = m.get("tournament_level")
-                is_elim = tl in ("Semis", "Finals")
+        tl = m.get("tournament_level")
+        is_elim = tl in ("Semis", "Finals")
 
-                for team_num, attrib in attributions.items():
-                    self.engine.update_team(team_num, attrib, is_elim=is_elim)
+        for team_num, attrib in attributions.items():
+            self.engine.update_team(team_num, attrib, is_elim=is_elim)
 
-                # Post-match: save team_match, update tracker
-                for team in red_teams + blue_teams:
-                    epa_post = float(self.engine.get_team(team).mean[0])
-                    self.storage.save_team_match(
-                        team, event_code, match_id,
-                        epa_pre=pre_epas[team],
-                        epa_post=epa_post,
-                        mean_json_pre=pre_means[team],
-                        win_prob=win_prob if team in red_teams else 1 - win_prob,
-                        is_elim=is_elim,
-                    )
-                    trk = event_tracker[team][event_code]
-                    trk["epa_max"] = max(trk["epa_max"], epa_post)
-                    trk["epa_sum"] += (pre_epas[team] + epa_post) / 2
-                    trk["match_count"] += 1
+        for team in red_teams + blue_teams:
+            epa_post = float(self.engine.get_team(team).mean[0])
+            self.storage.save_team_match(
+                team, m["event"], match_id,
+                epa_pre=pre_epas[team],
+                epa_post=epa_post,
+                mean_json_pre=pre_means[team],
+                win_prob=win_prob if team in red_teams else 1 - win_prob,
+                is_elim=is_elim,
+            )
+            trk = trackers[team][m["event"]]
+            trk["epa_max"] = max(trk["epa_max"], epa_post)
+            trk["epa_sum"] += (pre_epas[team] + epa_post) / 2
+            trk["match_count"] += 1
 
-                done += 1
-                if done % 50 == 0:
-                    print(f"  Processed {done}/{total} matches...")
+        return attributions
 
-            # Save team_event rows for this event
-            for team, trk in event_tracker.items():
+    def _save_event_rows(self, events: Dict[str, List[Dict]], trackers: Dict):
+        for event_code, event_matches in events.items():
+            event_type = event_matches[0].get("event_type") if event_matches else None
+            for team, trk in trackers.items():
                 if event_code not in trk:
                     continue
                 t = trk[event_code]
@@ -221,9 +202,49 @@ class EPAPipeline:
                     skew=sn.skew, n=sn.n, count=self.engine.counts.get(team, 0),
                 )
 
-        score_mean = float(component_means[0]) if len(component_means) > 0 else 0.0
+    def run(self):
+        logger.info("--- Starting EPA Pipeline for %s ---", self.season_id)
+
+        matches = self._fetch_matches()
+        if not matches:
+            logger.warning("No matches found. Exiting.")
+            return None
+
+        new_matches = self._filter_new_matches(matches)
+        if not new_matches:
+            logger.info("No new matches to process.")
+            self._load_existing_teams()
+            return self.engine
+
+        matches = new_matches
+        component_means, score_mean, score_sd = self._calibrate()
+
+        self._load_existing_teams()
+        all_teams = self._unique_teams(matches)
+        self._init_teams(all_teams, component_means, score_sd, score_mean)
+
+        events = self._group_and_sort_matches(matches)
+        trackers = self._init_event_trackers(events)
+
+        total = sum(len(v) for v in events.values())
+        done = 0
+
+        for event_code in sorted(events.keys()):
+            event_matches = events[event_code]
+            event_type = event_matches[0].get("event_type") if event_matches else None
+            logger.info("  Event %s (%s): %d matches", event_code, event_type, len(event_matches))
+
+            for m in event_matches:
+                self._process_single_match(m, trackers)
+                done += 1
+                if done % 50 == 0:
+                    logger.info("  Processed %d/%d matches...", done, total)
+
+        self._save_event_rows(events, trackers)
+
+        score_mean_used = float(component_means[0]) if len(component_means) > 0 else 0.0
         self.storage.save_season_meta(
-            score_mean=score_mean,
+            score_mean=score_mean_used,
             score_sd=self.engine.score_sd,
             component_means=component_means,
             num_matches=total,
@@ -232,13 +253,14 @@ class EPAPipeline:
 
         norm_epas = compute_norm_epa(self.engine.epas)
         self.storage.save_all_teams(self.engine.epas, self.engine.counts, norm_epas)
-        print(f"Saved {len(self.engine.epas)} teams to storage with norm_epa.")
-
-        print(f"--- Pipeline Complete. Trained {len(self.engine.epas)} teams across {len(events)} events ({total} matches). ---")
+        logger.info("Saved %d teams to storage with norm_epa.", len(self.engine.epas))
+        logger.info("--- Pipeline Complete. Trained %d teams across %d events (%d matches). ---",
+                    len(self.engine.epas), len(events), total)
         return self.engine
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         pipeline = EPAPipeline("2025")
         engine = pipeline.run()
@@ -246,6 +268,4 @@ if __name__ == "__main__":
             sample_team = list(engine.epas.keys())[0]
             print(f"Sample Team {sample_team} Mean Total: {engine.get_team(sample_team).mean[0]:.2f}")
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Pipeline failed: {e}")
+        logger.exception("Pipeline failed: %s", e)

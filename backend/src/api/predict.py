@@ -29,6 +29,7 @@ def predict_match(
     blue: str = Query(..., description="Comma-separated team numbers, e.g. '23400,24599'"),
     season: str = Query("2025"),
 ):
+    """Predict the outcome of a match between two alliances given their current EPA ratings."""
     red_teams = [int(t.strip()) for t in red.split(",") if t.strip()]
     blue_teams = [int(t.strip()) for t in blue.split(",") if t.strip()]
 
@@ -80,6 +81,7 @@ def compare_teams(
     teams: str = Query(..., description="Comma-separated team numbers, e.g. '26914,32736,23400'"),
     season: str = Query("2025"),
 ):
+    """Compare multiple teams side by side with their EPA component breakdown."""
     team_nums = [int(t.strip()) for t in teams.split(",") if t.strip()]
     if len(team_nums) < 2:
         raise HTTPException(status_code=400, detail="Must provide at least 2 teams")

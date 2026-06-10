@@ -110,7 +110,7 @@ class FTC2025Cleaner(BaseCleaner):
         return weights
 
 
-# ── 2024: Into The Deep (same name — prev season) ───────────────
+# ── 2024: CENTERSTAGE ────────────────────────────────────────────
 
 class FTC2024Cleaner(BaseCleaner):
     SEASON_ID = "2024"

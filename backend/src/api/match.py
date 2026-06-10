@@ -16,6 +16,7 @@ def list_matches(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
+    """List matches with pre/post EPA and win probability. Filterable by event, elim status, or team."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     all_teams = {e["team"] for e in all_events}
@@ -56,6 +57,7 @@ def get_match(
     match_id: str,
     season: str = Query("2025"),
 ):
+    """Get detailed EPA data for all teams in a specific match."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     teams_in_event = {e["team"] for e in all_events if e["event_code"] == event_code}

@@ -1,14 +1,26 @@
 import numpy as np
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Optional
+
 from backend.src.core.math import SkewNormal, unit_sigmoid
 from backend.src.core.config import SeasonConfig
+from backend.src.core.constants import K_FACTOR, ELIM_WEIGHT, DECAY_RATE
+
 
 class EPAEngine:
-    def __init__(self, config: SeasonConfig):
+    def __init__(
+        self,
+        config: SeasonConfig,
+        k: float = K_FACTOR,
+        num_teams: int = 2,
+        elim_weight: float = ELIM_WEIGHT,
+        decay_rate: float = DECAY_RATE,
+    ):
         self.config = config
         self.score_sd = config.score_sd
-        self.k = -5 / 8
-        self.num_teams = 2
+        self.k = k
+        self.num_teams = num_teams
+        self.elim_weight = elim_weight
+        self.decay_rate = decay_rate
         self.epas: Dict[int, SkewNormal] = {}
         self.counts: Dict[int, int] = {}
 
@@ -67,8 +79,8 @@ class EPAEngine:
     def update_team(self, team_num: int, attribution: np.ndarray, is_elim: bool = False):
         team = self.get_team(team_num)
         n = self.counts[team_num] if team_num in self.counts else 0
-        alpha = 1.0 / (1.0 + n * 0.1)
-        weight = 0.33 if is_elim else 1.0
+        alpha = 1.0 / (1.0 + n * self.decay_rate)
+        weight = self.elim_weight if is_elim else 1.0
         team.add_obs(attribution, alpha, weight)
         if not is_elim:
             self.counts[team_num] = n + 1

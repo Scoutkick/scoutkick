@@ -1,12 +1,15 @@
 import numpy as np
 
-MAX_SKEW = 0.95
+from backend.src.core.constants import MAX_SKEW
+
 
 def unit_sigmoid(x: float) -> float:
     return 1 / (1 + np.exp(-4 * (x - 0.5)))
 
+
 def inv_unit_sigmoid(x: float) -> float:
     return 0.5 + np.log(x / (1 - x)) / 4
+
 
 class SkewNormal:
     def __init__(self, mean: np.ndarray, var: np.ndarray, skew_index: int = 0):
@@ -27,8 +30,9 @@ class SkewNormal:
 
     @staticmethod
     def update_skew(skew: float, new_var: float, mean: float, new_mean: float, x: float, alpha: float) -> float:
-        if new_var == 0: return skew
-        new_skew = (x - mean) * (x - new_mean)**2 / (new_var ** 1.5)
+        if new_var == 0:
+            return skew
+        new_skew = (x - mean) * (x - new_mean) ** 2 / (new_var ** 1.5)
         new_skew = (1 - alpha) * skew + alpha * new_skew
         return min(max(new_skew, -MAX_SKEW), MAX_SKEW)
 
@@ -41,7 +45,7 @@ class SkewNormal:
             self.mean[self.skew_i],
             new_mean[self.skew_i],
             x[self.skew_i],
-            percent
+            percent,
         )
         new_n = self.n * (1 - percent) + 1
         self.mean = weight * new_mean + (1 - weight) * self.mean

@@ -1,3 +1,4 @@
+import logging
 import statistics
 from typing import List, Optional
 
@@ -6,6 +7,8 @@ import numpy as np
 from backend.src.core.config import FTC_VECTOR_SIZE
 from backend.src.data.cleaner import BaseCleaner
 from backend.src.data.read_ftcscout import get_matches
+
+logger = logging.getLogger(__name__)
 
 
 def calibrate_score_sd(
@@ -16,7 +19,7 @@ def calibrate_score_sd(
     matches = get_matches(cleaner)
 
     if not matches:
-        print(f"calibrate_score_sd: no matches found for {season_id}, using default")
+        logger.warning("calibrate_score_sd: no matches found for %s, using default", season_id)
         return 20.0
 
     if max_matches is not None:
@@ -32,11 +35,12 @@ def calibrate_score_sd(
             scores.append(float(blue_total))
 
     if len(scores) < 2:
-        print(f"calibrate_score_sd: too few scores ({len(scores)}), using default")
+        logger.warning("calibrate_score_sd: too few scores (%d), using default", len(scores))
         return 20.0
 
     sd = statistics.stdev(scores)
-    print(f"calibrate_score_sd({season_id}): {sd:.2f} from {len(scores)} scores across {len(matches)} matches")
+    logger.info("calibrate_score_sd(%s): %.2f from %d scores across %d matches",
+                season_id, sd, len(scores), len(matches))
     return round(sd, 2)
 
 
@@ -67,5 +71,5 @@ def calibrate_component_means(
         return np.zeros(FTC_VECTOR_SIZE)
 
     means = vec_sum / count
-    print(f"calibrate_component_means({season_id}): {count} observations")
+    logger.info("calibrate_component_means(%s): %d observations", season_id, count)
     return means

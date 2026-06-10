@@ -14,6 +14,7 @@ def list_teams(
     offset: int = Query(0, ge=0),
     search: Optional[str] = Query(None, description="Filter by team number prefix"),
 ):
+    """List all teams in a season, sorted by a metric. Supports pagination and search."""
     storage = get_storage(season)
     teams = storage.load_all_teams()
 
@@ -48,6 +49,7 @@ def list_teams(
 
 @router.get("/v1/team/{team}")
 def get_team(team: int, season: str = Query("2025")):
+    """Get full EPA breakdown for a single team, including match history."""
     storage = get_storage(season)
     params = storage.load_team(team)
     if params is None:
@@ -93,6 +95,7 @@ def get_team_events(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    """Get all events a team participated in, with per-event EPA stats."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     events = [e for e in all_events if e["team"] == team]
@@ -129,6 +132,7 @@ def get_team_matches(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    """Get all matches for a team with pre/post EPA and win probability."""
     storage = get_storage(season)
     matches = storage.load_team_matches(team)
     if event is not None:
@@ -149,4 +153,3 @@ def get_team_matches(
     matches.sort(key=key_fn, reverse=not ascending)
     sliced = matches[offset:offset + limit]
     return {"value": sliced, "count": len(matches)}
-
