@@ -1,6 +1,6 @@
 # ScoutKick
 
-![ScoutKick](logo.png)
+<p align="center"><img src="logo.png" width="200" alt="ScoutKick"></p>
 
 [![PyPI](https://img.shields.io/pypi/v/scoutkick-api)](https://pypi.org/project/scoutkick-api/)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://python.org)
