@@ -1,13 +1,16 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
+from backend.src.api.schemas import MatchDetail, MatchSummary, PaginatedResponse
+from backend.src.api.utils import sort_and_page
+from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Match"])
 
 
-@router.get("/v1/matches")
+@router.get("/v1/matches", response_model=PaginatedResponse)
 def list_matches(
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
     event: Optional[str] = Query(None),
     elim: Optional[bool] = Query(None),
     team: Optional[int] = Query(None),
@@ -38,46 +41,38 @@ def list_matches(
     for m in match_list:
         m["is_elim"] = bool(m["is_elim"])
 
-    sort_key_map = {
+    return sort_and_page(match_list, {
         "processed_at": lambda x: x["processed_at"] if "processed_at" in x else "",
         "match_id": lambda x: int(x["match_id"]) if x["match_id"].isdigit() else x["match_id"],
         "epa_pre": lambda x: x["epa_pre"] or 0,
         "epa_post": lambda x: x["epa_post"] or 0,
         "win_prob": lambda x: x["win_prob"] or 0,
-    }
-    key_fn = sort_key_map.get(metric, sort_key_map["processed_at"])
-    match_list.sort(key=key_fn, reverse=not ascending)
-    sliced = match_list[offset:offset + limit]
-    return {"value": sliced, "count": len(match_list)}
+    }, metric, ascending, offset, limit, default_metric="processed_at")
 
 
-@router.get("/v1/match/{event_code}/{match_id}")
+@router.get("/v1/match/{event_code}/{match_id}", response_model=MatchDetail)
 def get_match(
     event_code: str,
     match_id: str,
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
 ):
     """Get detailed EPA data for all teams in a specific match."""
     storage = get_storage(season)
-    all_events = storage.load_team_events()
-    teams_in_event = {e["team"] for e in all_events if e["event_code"] == event_code}
+    all_matches = storage.load_event_matches(event_code)
 
-    if not teams_in_event:
+    if not all_matches:
         raise HTTPException(status_code=404, detail=f"Event {event_code} not found")
 
     teams = []
-    for team in teams_in_event:
-        tm = storage.load_team_matches(team)
-        for m in tm:
-            if m["event_code"] == event_code and m["match_id"] == match_id:
-                teams.append({
-                    "team": m["team"],
-                    "epa_pre": m["epa_pre"],
-                    "epa_post": m["epa_post"],
-                    "win_prob": m["win_prob"],
-                    "is_elim": bool(m["is_elim"]),
-                })
-                break
+    for m in all_matches:
+        if m["match_id"] == match_id:
+            teams.append({
+                "team": m["team"],
+                "epa_pre": m["epa_pre"],
+                "epa_post": m["epa_post"],
+                "win_prob": m["win_prob"],
+                "is_elim": bool(m["is_elim"]),
+            })
 
     if not teams:
         raise HTTPException(status_code=404, detail=f"Match {match_id} at {event_code} not found")

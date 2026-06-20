@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 FTC_VECTOR_SIZE = 32
 
@@ -20,79 +20,41 @@ class SeasonConfig:
     default_mean_total: float = 20.0
     default_variance: float = 100.0
     score_sd: float = 20.0
+    dimensions: List[str] = field(init=False)
 
     def __post_init__(self):
-        self.dimensions = _make_dimensions(dict(zip(self.indices, self.active_dimensions)))
+        object.__setattr__(self, "dimensions", _make_dimensions(dict(zip(self.indices, self.active_dimensions))))
+
+
+def _config(
+    season_id: str,
+    default_mean_total: float = 15.0,
+    active_dimensions: Optional[List[str]] = None,
+    indices: Optional[List[int]] = None,
+    rp_indices: Optional[List[int]] = None,
+) -> SeasonConfig:
+    return SeasonConfig(
+        season_id=season_id,
+        active_dimensions=active_dimensions or ["total", "auto", "teleop", "endgame"],
+        indices=indices or [0, 1, 2, 3],
+        rp_indices=rp_indices or [],
+        default_mean_total=default_mean_total,
+    )
 
 
 SEASON_CONFIGS: Dict[str, SeasonConfig] = {
-    "2025": SeasonConfig(
-        season_id="2025",
-        active_dimensions=[
-            "total", "auto", "teleop", "endgame",
-            "rp1", "rp2", "rp3",
-            "auto_classified", "teleop_classified", "teleop_depot",
-        ],
+    "2025": _config("2025", default_mean_total=20.0,
+        active_dimensions=["total", "auto", "teleop", "endgame",
+                          "rp1", "rp2", "rp3",
+                          "auto_classified", "teleop_classified", "teleop_depot"],
         indices=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        rp_indices=[4, 5, 6],
-        default_mean_total=20.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2024": SeasonConfig(
-        season_id="2024",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=20.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2023": SeasonConfig(
-        season_id="2023",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=15.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2022": SeasonConfig(
-        season_id="2022",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=15.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2021": SeasonConfig(
-        season_id="2021",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=15.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2020": SeasonConfig(
-        season_id="2020",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=15.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
-    "2019": SeasonConfig(
-        season_id="2019",
-        active_dimensions=["total", "auto", "teleop", "endgame"],
-        indices=[0, 1, 2, 3],
-        rp_indices=[],
-        default_mean_total=15.0,
-        default_variance=100.0,
-        score_sd=20.0,
-    ),
+        rp_indices=[4, 5, 6]),
+    "2024": _config("2024", default_mean_total=20.0),
+    "2023": _config("2023"),
+    "2022": _config("2022"),
+    "2021": _config("2021"),
+    "2020": _config("2020"),
+    "2019": _config("2019"),
 }
 
 

@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
+from backend.src.core.constants import CURR_YEAR
 from backend.src.services.clustering import compute_clusters, get_team_cluster_detail, DEFAULT_N_CLUSTERS
 from backend.src.services.complementarity import complementarity_score, best_alliance_partners
 from backend.src.services.trajectory import (
@@ -13,7 +14,7 @@ router = APIRouter(tags=["Cluster"])
 
 @router.get("/v1/clusters")
 def list_clusters(
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
     n_clusters: int = Query(DEFAULT_N_CLUSTERS, ge=2, le=20, description="Number of playstyle clusters"),
 ):
     """Compute playstyle clusters for all teams in a season. Groups teams by EPA vector similarity."""
@@ -29,7 +30,7 @@ def list_clusters(
 @router.get("/v1/team/{team}/playstyle")
 def get_team_playstyle(
     team: int,
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
     n_clusters: int = Query(DEFAULT_N_CLUSTERS, ge=2, le=20),
 ):
     """Get playstyle cluster classification for a specific team."""
@@ -51,7 +52,7 @@ def get_team_playstyle(
 def get_complementarity(
     team1: int = Query(..., description="First team number"),
     team2: int = Query(..., description="Second team number"),
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
 ):
     """Compute complementarity score between two teams. Measures how well their playstyles mesh."""
     storage = get_storage(season)
@@ -67,7 +68,7 @@ def get_complementarity(
 @router.get("/v1/complementarity/{team}/partners")
 def get_alliance_partners(
     team: int,
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
     top_n: int = Query(10, ge=1, le=50, description="Number of top partners"),
 ):
     """Find the best alliance partners for a team based on playstyle complementarity."""
@@ -82,7 +83,7 @@ def get_alliance_partners(
 
 @router.get("/v1/trajectory/clusters")
 def list_trajectory_clusters(
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
     n_clusters: int = Query(4, ge=2, le=10, description="Number of trajectory clusters"),
 ):
     """Compute growth trajectory clusters. Groups teams by how their EPA evolved across the season."""
@@ -96,7 +97,7 @@ def list_trajectory_clusters(
 @router.get("/v1/team/{team}/trajectory")
 def get_team_trajectory_endpoint(
     team: int,
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
 ):
     """Get the EPA growth trajectory for a single team across their matches."""
     storage = get_storage(season)

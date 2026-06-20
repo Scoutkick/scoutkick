@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -122,7 +122,27 @@ class BaseStorage(ABC):
         self._execute("DELETE FROM team_seasons WHERE season = ?", (self.season_id,))
         self._execute("DELETE FROM team_events WHERE season = ?", (self.season_id,))
         self._execute("DELETE FROM team_matches WHERE season = ?", (self.season_id,))
+        self._execute("DELETE FROM events WHERE season = ?", (self.season_id,))
         self._execute("DELETE FROM seasons WHERE season = ?", (self.season_id,))
+
+    def save_team_events_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_team_event(
+                r["team"], r["event_code"],
+                event_type=r.get("event_type"),
+                epa_start=r.get("epa_start"), epa_max=r.get("epa_max"),
+                epa_pre_elim=r.get("epa_pre_elim"), epa_mean=r.get("epa_mean"),
+                mean=r.get("mean"), var=r.get("var"),
+                skew=r.get("skew"), n=r.get("n"), count=r.get("count"),
+                norm_epa=r.get("norm_epa"),
+            )
+
+    def save_all_teams_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_team(
+                r["team"], r["mean"], r["var"],
+                r["skew"], r["n"], r["count"], r.get("norm_epa"),
+            )
 
     # ── team_events ──
 
@@ -181,6 +201,22 @@ class BaseStorage(ABC):
         return self._row_to_event(rows[0])
 
     # ── team_matches ──
+
+    def load_event_matches(self, event_code: str) -> List[Dict]:
+        rows = self._execute(
+            "SELECT * FROM team_matches WHERE season = ? AND event_code = ?",
+            (self.season_id, event_code),
+        )
+        return [dict(r) for r in rows]
+
+    def save_team_matches_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_team_match(
+                r["team"], r["event_code"], r["match_id"],
+                epa_pre=r.get("epa_pre"), epa_post=r.get("epa_post"),
+                mean_json_pre=r.get("mean_json_pre"), win_prob=r.get("win_prob"),
+                is_elim=r.get("is_elim", False),
+            )
 
     def save_team_match(self, team: int, event_code: str, match_id: str,
                         epa_pre: Optional[float] = None,
@@ -267,3 +303,141 @@ class BaseStorage(ABC):
             r.pop("component_means_json", None)
             result.append(r)
         return result
+
+    # ── events (metadata) ──
+
+    def _row_to_event_meta(self, row: dict) -> Dict[str, Any]:
+        r = dict(row)
+        if r.get("location_json"):
+            r["location"] = json.loads(r["location_json"])
+        else:
+            r["location"] = None
+        r.pop("location_json", None)
+        return r
+
+    def save_events_metadata_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_event_metadata(r)
+
+    def save_event_metadata(self, record: Dict):
+        self._execute(f"""
+            INSERT INTO events (event_code, season, name, event_type, start, end,
+                                location_json, region_code, league_code, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {self.NOW_FUNC})
+            ON CONFLICT(event_code, season) DO UPDATE SET
+                name         = COALESCE(excluded.name, events.name),
+                event_type   = COALESCE(excluded.event_type, events.event_type),
+                start        = COALESCE(excluded.start, events.start),
+                end          = COALESCE(excluded.end, events.end),
+                location_json = COALESCE(excluded.location_json, events.location_json),
+                region_code  = COALESCE(excluded.region_code, events.region_code),
+                league_code  = COALESCE(excluded.league_code, events.league_code),
+                updated_at   = {self.NOW_FUNC}
+        """, (
+            record["event_code"], self.season_id,
+            record.get("name"), record.get("event_type"),
+            record.get("start"), record.get("end"),
+            json.dumps(record["location"]) if record.get("location") else None,
+            record.get("region_code"), record.get("league_code"),
+        ))
+
+    def load_event_metadata(self, event_code: str) -> Optional[Dict]:
+        rows = self._execute(
+            "SELECT * FROM events WHERE event_code = ? AND season = ?",
+            (event_code, self.season_id),
+        )
+        if not rows:
+            return None
+        return self._row_to_event_meta(rows[0])
+
+    def load_all_events_metadata(self) -> List[Dict]:
+        rows = self._execute(
+            "SELECT * FROM events WHERE season = ? ORDER BY start",
+            (self.season_id,),
+        )
+        return [self._row_to_event_meta(r) for r in rows]
+
+    # ── teams (metadata) ──
+
+    def save_team_info(self, record: Dict):
+        self._execute(f"""
+            INSERT INTO teams (team, name, school_name, city, state, country,
+                               rookie_year, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, {self.NOW_FUNC})
+            ON CONFLICT(team) DO UPDATE SET
+                name        = COALESCE(excluded.name, teams.name),
+                school_name = COALESCE(excluded.school_name, teams.school_name),
+                city        = COALESCE(excluded.city, teams.city),
+                state       = COALESCE(excluded.state, teams.state),
+                country     = COALESCE(excluded.country, teams.country),
+                rookie_year = COALESCE(excluded.rookie_year, teams.rookie_year),
+                updated_at  = {self.NOW_FUNC}
+        """, (
+            record["team"], record.get("name"), record.get("school_name"),
+            record.get("city"), record.get("state"), record.get("country"),
+            record.get("rookie_year"),
+        ))
+
+    def load_team_info(self, team: int) -> Optional[Dict]:
+        rows = self._execute(
+            "SELECT * FROM teams WHERE team = ?", (team,),
+        )
+        return dict(rows[0]) if rows else None
+
+    def load_all_teams_info(self) -> Dict[int, Dict]:
+        rows = self._execute("SELECT * FROM teams ORDER BY team")
+        return {r["team"]: dict(r) for r in rows}
+
+    def save_team_info_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_team_info(r)
+
+    # ── team_season ranks ──
+
+    def save_team_rank(self, team: int, rank: int,
+                       country_rank: Optional[int] = None,
+                       state_rank: Optional[int] = None,
+                       district_rank: Optional[int] = None,
+                       country_team_count: Optional[int] = None,
+                       state_team_count: Optional[int] = None,
+                       district_team_count: Optional[int] = None,
+                       team_country: Optional[str] = None,
+                       team_state: Optional[str] = None,
+                       team_district: Optional[str] = None):
+        self._execute(f"""
+            UPDATE team_seasons SET
+                rank = ?, country_rank = ?, state_rank = ?, district_rank = ?,
+                country_team_count = ?, state_team_count = ?, district_team_count = ?,
+                team_country = ?, team_state = ?, team_district = ?
+            WHERE team = ? AND season = ?
+        """, (
+            rank, country_rank, state_rank, district_rank,
+            country_team_count, state_team_count, district_team_count,
+            team_country, team_state, team_district,
+            team, self.season_id,
+        ))
+
+    def save_team_ranks_bulk(self, records: List[Dict]):
+        for r in records:
+            self.save_team_rank(
+                r["team"], r["rank"],
+                country_rank=r.get("country_rank"),
+                state_rank=r.get("state_rank"),
+                district_rank=r.get("district_rank"),
+                country_team_count=r.get("country_team_count"),
+                state_team_count=r.get("state_team_count"),
+                district_team_count=r.get("district_team_count"),
+                team_country=r.get("team_country"),
+                team_state=r.get("team_state"),
+                team_district=r.get("team_district"),
+            )
+
+    def load_all_team_ranks(self) -> Dict[int, Dict]:
+        rows = self._execute(
+            """SELECT team, rank, country_rank, state_rank, district_rank,
+                      country_team_count, state_team_count, district_team_count,
+                      team_country, team_state, team_district
+               FROM team_seasons WHERE season = ?""",
+            (self.season_id,),
+        )
+        return {r["team"]: dict(r) for r in rows}

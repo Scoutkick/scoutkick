@@ -4,6 +4,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.api.router import api_router
 from backend.src.api.data import router as data_router, pipeline_status
@@ -43,6 +44,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="scoutkick EPA API", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(api_router)
 app.include_router(data_router)
 

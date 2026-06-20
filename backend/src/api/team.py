@@ -1,13 +1,16 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
+from backend.src.api.schemas import TeamDetail, TeamMatch, TeamSummary, PaginatedResponse
+from backend.src.api.utils import sort_and_page
+from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Team"])
 
 
-@router.get("/v1/teams")
+@router.get("/v1/teams", response_model=PaginatedResponse)
 def list_teams(
-    season: str = Query("2025", description="Season year"),
+    season: str = Query(CURR_YEAR, description="Season year"),
     metric: str = Query("norm_epa", description="Sort metric: norm_epa, total, auto, teleop, endgame"),
     ascending: bool = Query(False),
     limit: int = Query(50, ge=1, le=1000),
@@ -32,7 +35,7 @@ def list_teams(
             "matches": params["count"],
         })
 
-    sort_key_map = {
+    return sort_and_page(results, {
         "norm_epa": lambda x: x["norm_epa"] if x["norm_epa"] is not None else 0,
         "total": lambda x: x["total"],
         "auto": lambda x: x["auto"],
@@ -40,15 +43,11 @@ def list_teams(
         "endgame": lambda x: x["endgame"],
         "team": lambda x: x["team"],
         "matches": lambda x: x["matches"],
-    }
-    key_fn = sort_key_map.get(metric, sort_key_map["norm_epa"])
-    results.sort(key=key_fn, reverse=not ascending)
-    sliced = results[offset:offset + limit]
-    return {"value": sliced, "count": len(results)}
+    }, metric, ascending, offset, limit, default_metric="norm_epa")
 
 
-@router.get("/v1/team/{team}")
-def get_team(team: int, season: str = Query("2025")):
+@router.get("/v1/team/{team}", response_model=TeamDetail)
+def get_team(team: int, season: str = Query(CURR_YEAR)):
     """Get full EPA breakdown for a single team, including match history."""
     storage = get_storage(season)
     params = storage.load_team(team)
@@ -85,10 +84,10 @@ def get_team(team: int, season: str = Query("2025")):
     }
 
 
-@router.get("/v1/team/{team}/events")
+@router.get("/v1/team/{team}/events", response_model=PaginatedResponse)
 def get_team_events(
     team: int,
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
     event_type: Optional[str] = Query(None, description="Filter by event type (Qualifier, Championship, etc.)"),
     metric: str = Query("epa_mean", description="Sort metric: epa_mean, epa_max, epa_start, count"),
     ascending: bool = Query(False),
@@ -109,22 +108,18 @@ def get_team_events(
         if e.get("var") is not None:
             e["var"] = e["var"].tolist()
 
-    sort_key_map = {
+    return sort_and_page(events, {
         "epa_mean": lambda x: x.get("epa_mean") or 0,
         "epa_max": lambda x: x.get("epa_max") or 0,
         "epa_start": lambda x: x.get("epa_start") or 0,
         "count": lambda x: x.get("count") or 0,
-    }
-    key_fn = sort_key_map.get(metric, sort_key_map["epa_mean"])
-    events.sort(key=key_fn, reverse=not ascending)
-    sliced = events[offset:offset + limit]
-    return {"value": sliced, "count": len(events)}
+    }, metric, ascending, offset, limit, default_metric="epa_mean")
 
 
-@router.get("/v1/team/{team}/matches")
+@router.get("/v1/team/{team}/matches", response_model=PaginatedResponse)
 def get_team_matches(
     team: int,
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
     event: Optional[str] = Query(None),
     elim: Optional[bool] = Query(None),
     metric: str = Query("match_id", description="Sort metric: match_id, epa_pre, epa_post, win_prob"),
@@ -143,13 +138,9 @@ def get_team_matches(
     for m in matches:
         m["is_elim"] = bool(m["is_elim"])
 
-    sort_key_map = {
+    return sort_and_page(matches, {
         "match_id": lambda x: int(x["match_id"]) if x["match_id"].isdigit() else x["match_id"],
         "epa_pre": lambda x: x["epa_pre"] or 0,
         "epa_post": lambda x: x["epa_post"] or 0,
         "win_prob": lambda x: x["win_prob"] or 0,
-    }
-    key_fn = sort_key_map.get(metric, sort_key_map["match_id"])
-    matches.sort(key=key_fn, reverse=not ascending)
-    sliced = matches[offset:offset + limit]
-    return {"value": sliced, "count": len(matches)}
+    }, metric, ascending, offset, limit, default_metric="match_id")

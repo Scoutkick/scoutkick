@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-from backend.src.data.cleaner import CleanerRegistry
+from backend.src.data.cleaner import BaseCleaner
 from backend.src.data.read_ftcscout import get_matches
 from backend.src.storage import create_storage
 
@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.WARNING)
 
 
 def validate_season(season_id: str):
-    cleaner = CleanerRegistry.get_cleaner(season_id)
+    cleaner = BaseCleaner.get_cleaner(season_id)
     raw = get_matches(cleaner, cache=True)
 
     outcomes = {}

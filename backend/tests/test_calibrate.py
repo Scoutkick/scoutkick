@@ -3,7 +3,7 @@ from unittest.mock import patch
 import numpy as np
 from backend.src.core.config import FTC_VECTOR_SIZE
 from backend.src.services.calibrate import calibrate_score_sd, calibrate_component_means
-from backend.src.data.cleaner import CleanerRegistry
+from backend.src.data.cleaner import BaseCleaner
 
 
 FAKE_MATCHES = [
@@ -26,7 +26,7 @@ EMPTY_MATCHES: list = []
 
 class TestCalibrateScoreSD(unittest.TestCase):
     def setUp(self):
-        self.cleaner = CleanerRegistry.get_cleaner("2025")
+        self.cleaner = BaseCleaner.get_cleaner("2025")
 
     @patch("backend.src.services.calibrate.get_matches")
     def test_calibrate_with_data(self, mock_get_matches):
@@ -63,7 +63,7 @@ class TestCalibrateScoreSD(unittest.TestCase):
 
 class TestCalibrateComponentMeans(unittest.TestCase):
     def setUp(self):
-        self.cleaner = CleanerRegistry.get_cleaner("2025")
+        self.cleaner = BaseCleaner.get_cleaner("2025")
 
     @patch("backend.src.services.calibrate.get_matches")
     def test_component_means_with_data(self, mock_get_matches):

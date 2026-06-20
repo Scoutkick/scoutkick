@@ -1,6 +1,8 @@
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from backend.src.api.deps import get_storage
+from backend.src.api.schemas import PaginatedResponse, SeasonMeta
+from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Season"])
 
@@ -17,7 +19,7 @@ def _serialize_meta(meta: dict) -> dict:
     return r
 
 
-@router.get("/v1/seasons")
+@router.get("/v1/seasons", response_model=PaginatedResponse)
 def list_seasons():
     """List all seasons that have pipeline data stored in the database."""
     storage = get_storage()
@@ -26,7 +28,7 @@ def list_seasons():
     return {"value": value, "count": len(value)}
 
 
-@router.get("/v1/season/{season}")
+@router.get("/v1/season/{season}", response_model=SeasonMeta)
 def get_season(season: str):
     """Get metadata (score_mean, score_sd, num_matches, etc.) for a specific season."""
     storage = get_storage(season)

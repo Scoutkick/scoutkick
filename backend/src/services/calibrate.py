@@ -1,6 +1,6 @@
 import logging
 import statistics
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -15,8 +15,10 @@ def calibrate_score_sd(
     cleaner: BaseCleaner,
     season_id: str,
     max_matches: Optional[int] = None,
+    matches: Optional[List[Dict]] = None,
 ) -> float:
-    matches = get_matches(cleaner)
+    if matches is None:
+        matches = get_matches(cleaner)
 
     if not matches:
         logger.warning("calibrate_score_sd: no matches found for %s, using default", season_id)
@@ -48,8 +50,10 @@ def calibrate_component_means(
     cleaner: BaseCleaner,
     season_id: str,
     max_matches: Optional[int] = None,
+    matches: Optional[List[Dict]] = None,
 ) -> np.ndarray:
-    matches = get_matches(cleaner)
+    if matches is None:
+        matches = get_matches(cleaner)
 
     if not matches:
         return np.zeros(FTC_VECTOR_SIZE)

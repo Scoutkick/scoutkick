@@ -30,6 +30,8 @@ curl http://127.0.0.1:8000/v1/data/status   # Check progress
 Zero-dependency client (pure `urllib` + `json`):
 
 ```bash
+pip install scoutkick-api
+# or from source:
 pip install git+https://github.com/Cicchy/scoutkick.git#subdirectory=scoutkick-python
 ```
 
@@ -44,6 +46,36 @@ sk.predict(red=[26914, 32736], blue=[23400, 24599])
 sk.get_teams(season="2025", limit=10)
 sk.compare(teams=[26914, 32736])
 ```
+
+All available methods:
+
+| Method | Description |
+|--------|-------------|
+| `get_seasons()` | List cached seasons |
+| `get_season(season)` | Season metadata |
+| `get_teams(...)` | Paginated team list (sort, search, filter) |
+| `get_team(team, season)` | Full EPA breakdown + match history |
+| `get_team_events(...)` | Per-event EPA stats for a team |
+| `get_team_matches(...)` | Per-match EPA history for a team |
+| `get_team_info(team)` | Team name/location from FTC Scout |
+| `get_team_playstyle(team, ...)` | Playstyle cluster classification |
+| `get_team_trajectory(team, ...)` | EPA growth trajectory |
+| `get_events(...)` | All events with aggregate EPA stats |
+| `get_event(code, season)` | Event detail with team list |
+| `get_event_matches(...)` | Event match list |
+| `get_events_info(...)` | Events with FTC Scout metadata |
+| `get_event_info(code, ...)` | Event metadata + EPA data |
+| `get_matches(...)` | Global match list (filterable) |
+| `get_match(event, match, ...)` | Single match detail |
+| `predict(red, blue, ...)` | Predict match outcome |
+| `compare(teams, ...)` | Side-by-side team comparison |
+| `get_clusters(...)` | Playstyle clusters for all teams |
+| `get_complementarity(t1, t2)` | Playstyle complementarity score |
+| `get_alliance_partners(team, ...)` | Best alliance partners |
+| `get_trajectory_clusters(...)` | Growth trajectory clusters |
+| `run_pipeline(season)` | Trigger EPA pipeline |
+| `get_pipeline_status()` | Pipeline state |
+| `health()` | Server health |
 
 ---
 
@@ -128,9 +160,10 @@ scoutkick/
 │   │   │   ├── sqlite_storage.py      # SQLite implementation
 │   │   │   └── postgres_storage.py    # PostgreSQL implementation
 │   │   └── api/
-│   │       ├── router.py, deps.py
+│   │       ├── router.py, deps.py, schemas.py, utils.py
 │   │       ├── season.py, team.py, event.py, match.py
 │   │       ├── predict.py, data.py, cluster.py
+│   │       ├── ftcscout_proxy.py, site.py
 │   ├── tests/
 │   │   ├── test_engine.py             # Unit tests (~82)
 │   │   ├── test_integration.py        # Integration tests (20)
@@ -140,13 +173,17 @@ scoutkick/
 │   │   └── ...
 │   ├── cache/                         # Runtime data (gitignored)
 │   ├── pyproject.toml
-│   └── requirements.txt
-├── scoutkick-python/                  # pip-installable client package
-│   └── src/scoutkick_api/client.py
-├── CLAUDE.md
+│   ├── requirements.txt
+│   └── run_all_seasons.py             # Batch pipeline runner
+├── scoutkick-python/                  # PyPI package: pip install scoutkick-api
+│   ├── pyproject.toml
+│   ├── README.md
+│   └── src/scoutkick_api/
+│       ├── __init__.py
+│       └── client.py
+├── AGENTS.md
 ├── README.md
-├── LICENSE
-└── .todos.md
+└── LICENSE
 ```
 
 ---
