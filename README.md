@@ -1,5 +1,7 @@
 # ScoutKick
 
+![ScoutKick](logo.png)
+
 Expected Points Added (EPA) rating system for FIRST Tech Challenge (FTC), ported from [Statbotics](https://statbotics.io).
 
 Pulls match data from `api.ftcscout.org/graphql`, computes EPA ratings via an EWMA learning loop, and serves them through a FastAPI REST API.
