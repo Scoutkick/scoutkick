@@ -1,11 +1,8 @@
 import logging
 import threading
-import traceback
-from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter
 
-from backend.src.core.config import SEASON_CONFIGS
 from backend.src.services.pipeline_service import EPAPipeline
 from backend.src.api.deps import DB_PATH
 
@@ -43,32 +40,6 @@ def _run_pipelines(seasons: list[str], db_path: str):
         pipeline_status["results"] = results
     total = sum(r["teams"] for r in results.values())
     logger.info("All pipelines complete. Total teams trained: %d", total)
-
-
-@router.post("/v1/data/run")
-def run_pipeline(
-    background_tasks: BackgroundTasks,
-    season: Optional[str] = None,
-):
-    with _pipeline_lock:
-        if pipeline_status["state"] == "running":
-            raise HTTPException(status_code=409, detail="Pipeline already running")
-    if season is not None and season not in SEASON_CONFIGS:
-        raise HTTPException(status_code=404, detail=f"Unknown season '{season}'")
-    seasons = [season] if season else sorted(SEASON_CONFIGS.keys())
-    background_tasks.add_task(_run_pipelines, seasons, DB_PATH)
-    return {"status": "started", "seasons": seasons}
-
-
-@router.post("/v1/data/run/{season}")
-def run_single_season(season: str, background_tasks: BackgroundTasks):
-    with _pipeline_lock:
-        if pipeline_status["state"] == "running":
-            raise HTTPException(status_code=409, detail="Pipeline already running")
-    if season not in SEASON_CONFIGS:
-        raise HTTPException(status_code=404, detail=f"Unknown season '{season}'")
-    background_tasks.add_task(_run_pipelines, [season], DB_PATH)
-    return {"status": "started", "season": season}
 
 
 @router.get("/v1/data/status")

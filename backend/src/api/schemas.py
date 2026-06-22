@@ -47,6 +47,23 @@ class TeamDetail(BaseModel):
     team_matches: List[TeamMatch]
 
 
+class TeamYearSummary(BaseModel):
+    season: str
+    total: float
+    auto: float
+    teleop: float
+    endgame: float
+    mean: List[float]
+    var: List[float]
+    skew: float
+    n: float
+    count: int
+    norm_epa: Optional[float] = None
+    rank: Optional[int] = None
+    country_rank: Optional[int] = None
+    state_rank: Optional[int] = None
+
+
 class TeamEvent(BaseModel):
     event_code: str
     event_type: Optional[str] = None
@@ -56,6 +73,23 @@ class TeamEvent(BaseModel):
     epa_pre_elim: Optional[float] = None
     count: Optional[int] = None
     norm_epa: Optional[float] = None
+    mean: Optional[List[float]] = None
+    var: Optional[List[float]] = None
+
+
+class TeamEventDetail(BaseModel):
+    event_code: str
+    event_type: Optional[str] = None
+    name: Optional[str] = None
+    start: Optional[str] = None
+    end: Optional[str] = None
+    location: Optional[Location] = None
+    epa_start: Optional[float] = None
+    epa_max: Optional[float] = None
+    epa_mean: Optional[float] = None
+    epa_pre_elim: Optional[float] = None
+    norm_epa: Optional[float] = None
+    count: Optional[int] = None
     mean: Optional[List[float]] = None
     var: Optional[List[float]] = None
 
@@ -298,6 +332,66 @@ class SiteEventLight(BaseModel):
     name: Optional[str] = None
     start: Optional[str] = None
     end: Optional[str] = None
+
+
+# ── Distributions ──
+
+class DistributionBin(BaseModel):
+    bin_start: float
+    bin_end: float
+    count: int
+
+
+class DistributionResponse(BaseModel):
+    season: str
+    count: int
+    min: float
+    max: float
+    mean: float
+    median: float
+    std: Optional[float] = None
+    percentiles: Dict[str, float]
+    histogram: List[DistributionBin]
+
+
+# ── Event Predictions ──
+
+class EventPrediction(BaseModel):
+    match_id: str
+    is_elim: bool = False
+    red_teams: List[int]
+    blue_teams: List[int]
+    red_win_prob: float
+    blue_win_prob: float
+    red_epa_total: Optional[float] = None
+    blue_epa_total: Optional[float] = None
+
+
+class EventPredictionsResponse(BaseModel):
+    event_code: str
+    season: str
+    match_count: int
+    predictions: List[EventPrediction]
+
+
+# ── Upcoming Matches ──
+
+class UpcomingMatch(BaseModel):
+    event_code: str
+    event_name: Optional[str] = None
+    match_id: str
+    is_elim: bool = False
+    teams: List[EventMatchTeam]
+
+
+# ── Districts ──
+
+class District(BaseModel):
+    region_code: str
+    league_code: Optional[str] = None
+    event_count: int
+    team_count: int
+    seasons: List[str]
 
 
 # ── Data Pipeline ──

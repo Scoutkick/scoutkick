@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import TeamDetail, TeamMatch, TeamSummary, PaginatedResponse
+from backend.src.api.schemas import TeamDetail, TeamMatch, TeamSummary, TeamYearSummary, TeamEventDetail, PaginatedResponse
 from backend.src.api.utils import sort_and_page
 from backend.src.core.constants import CURR_YEAR
+from backend.src.storage import create_storage
 
 router = APIRouter(tags=["Team"])
 
@@ -16,14 +17,20 @@ def list_teams(
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     search: Optional[str] = Query(None, description="Filter by team number prefix"),
+    country: Optional[str] = Query(None, description="Filter by country code"),
+    state: Optional[str] = Query(None, description="Filter by state/province"),
 ):
-    """List all teams in a season, sorted by a metric. Supports pagination and search."""
+    """List all teams in a season, sorted by a metric. Supports pagination, search, and location filters."""
     storage = get_storage(season)
     teams = storage.load_all_teams()
 
     results = []
     for team, params in teams.items():
         if search is not None and search not in str(team):
+            continue
+        if country is not None and (params.get("team_country") or "").lower() != country.lower():
+            continue
+        if state is not None and (params.get("team_state") or "").lower() != state.lower():
             continue
         results.append({
             "team": team,
@@ -84,6 +91,54 @@ def get_team(team: int, season: str = Query(CURR_YEAR)):
     }
 
 
+@router.get("/v1/team/{team}/years", response_model=List[TeamYearSummary])
+def get_team_years(team: int):
+    """Get EPA data for a team across all seasons."""
+    storage = create_storage(CURR_YEAR, "")
+    years = storage.load_team_cross_season(team)
+    if not years:
+        raise HTTPException(status_code=404, detail=f"No data found for team {team}")
+
+    result = []
+    for y in years:
+        s = create_storage(y["season"], "")
+        params = s.load_team(team)
+        ranks = s.load_all_team_ranks().get(team, {})
+        mean = params["mean"] if params is not None else y["mean"]
+        result.append({
+            "season": y["season"],
+            "total": float(mean[0]),
+            "auto": float(mean[1]),
+            "teleop": float(mean[2]),
+            "endgame": float(mean[3]),
+            "mean": mean.tolist() if hasattr(mean, 'tolist') else mean,
+            "var": y["var"].tolist() if hasattr(y["var"], 'tolist') else y["var"],
+            "skew": y["skew"],
+            "n": y["n"],
+            "count": y["count"],
+            "norm_epa": y["norm_epa"],
+            "rank": ranks.get("rank"),
+            "country_rank": ranks.get("country_rank"),
+            "state_rank": ranks.get("state_rank"),
+        })
+    return result
+
+
+@router.get("/v1/team/{team}/event/{event_code}", response_model=TeamEventDetail)
+def get_team_event(team: int, event_code: str, season: str = Query(CURR_YEAR)):
+    """Get EPA data for a single team at a specific event."""
+    storage = get_storage(season)
+    events = storage.load_team_events_with_metadata(team)
+    event = next((e for e in events if e["event_code"] == event_code), None)
+    if event is None:
+        raise HTTPException(status_code=404, detail=f"Team {team} not found at event {event_code} in season {season}")
+    if event.get("mean") is not None:
+        event["mean"] = event["mean"].tolist()
+    if event.get("var") is not None:
+        event["var"] = event["var"].tolist()
+    return event
+
+
 @router.get("/v1/team/{team}/events", response_model=PaginatedResponse)
 def get_team_events(
     team: int,
@@ -94,10 +149,9 @@ def get_team_events(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
-    """Get all events a team participated in, with per-event EPA stats."""
+    """Get all events a team participated in, with per-event EPA stats and event metadata."""
     storage = get_storage(season)
-    all_events = storage.load_team_events()
-    events = [e for e in all_events if e["team"] == team]
+    events = storage.load_team_events_with_metadata(team)
 
     if event_type is not None:
         events = [e for e in events if e.get("event_type") == event_type]

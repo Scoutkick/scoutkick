@@ -8,6 +8,7 @@ from backend.src.api.schemas import (
     SiteTeamPage, SiteEventPage, SiteMatchPage,
     SiteTeamLight, SiteEventLight, SeasonMeta,
     TeamInfo, TeamSeasonSummary, EventMatch, EventMatchTeam,
+    UpcomingMatch,
 )
 from backend.src.core.constants import CURR_YEAR
 
@@ -197,6 +198,42 @@ def site_event_page(
         "qual_matches": qual_matches,
         "elim_matches": elim_matches,
         "season_meta": season_meta or {},
+    }
+
+
+@router.get("/v1/site/upcoming_matches")
+def site_upcoming_matches(season: str = Query(CURR_YEAR)):
+    """Return the most recently processed matches (live upcoming schedule not yet available)."""
+    storage = get_storage(season)
+    all_matches = storage.load_all_matches()
+
+    all_matches.sort(key=lambda m: m.get("processed_at", ""), reverse=True)
+    recent = all_matches[:50]
+
+    event_names = {e["event_code"]: e.get("name") for e in storage.load_all_events_metadata()}
+
+    match_groups: dict = {}
+    for m in recent:
+        key = (m["event_code"], m["match_id"])
+        if key not in match_groups:
+            match_groups[key] = {
+                "event_code": m["event_code"],
+                "match_id": m["match_id"],
+                "is_elim": bool(m["is_elim"]),
+                "teams": [],
+                "event_name": event_names.get(m["event_code"]),
+            }
+        match_groups[key]["teams"].append({
+            "team": m["team"],
+            "epa_pre": m["epa_pre"],
+            "epa_post": m["epa_post"],
+            "win_prob": m["win_prob"],
+        })
+
+    return {
+        "season": season,
+        "matches": list(match_groups.values()),
+        "count": len(match_groups),
     }
 
 

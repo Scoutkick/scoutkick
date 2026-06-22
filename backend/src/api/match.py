@@ -50,6 +50,67 @@ def list_matches(
     }, metric, ascending, offset, limit, default_metric="processed_at")
 
 
+@router.get("/v1/noteworthy")
+def get_noteworthy_matches(
+    season: str = Query(CURR_YEAR, description="Season year"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Return noteworthy matches: biggest EPA swings, biggest upsets, closest matches."""
+    storage = get_storage(season)
+    all_matches = storage.load_all_matches()
+    if not all_matches:
+        raise HTTPException(status_code=404, detail=f"No matches found for season {season}")
+
+    # Group by (event_code, match_id) to get per-match aggregates
+    match_groups: dict = {}
+    for m in all_matches:
+        key = (m["event_code"], m["match_id"])
+        if key not in match_groups:
+            match_groups[key] = {
+                "event_code": m["event_code"],
+                "match_id": m["match_id"],
+                "is_elim": bool(m["is_elim"]),
+                "teams": [],
+            }
+        match_groups[key]["teams"].append({
+            "team": m["team"],
+            "epa_pre": m["epa_pre"],
+            "epa_post": m["epa_post"],
+            "epa_delta": (m["epa_post"] or 0) - (m["epa_pre"] or 0),
+            "win_prob": m["win_prob"],
+        })
+
+    matches_list = list(match_groups.values())
+
+    # Biggest positive EPA swings
+    by_delta = sorted(
+        matches_list,
+        key=lambda m: max(abs(t["epa_delta"]) for t in m["teams"]),
+        reverse=True,
+    )[:limit]
+
+    # Biggest upsets (lowest win prob but won)
+    upsets = []
+    for m in matches_list:
+        for t in m["teams"]:
+            if t["win_prob"] is not None and t["win_prob"] < 0.3:
+                upsets.append({**m, "upset_team": t["team"], "win_prob": t["win_prob"]})
+    upsets = sorted(upsets, key=lambda x: x["win_prob"])[:limit]
+
+    # Closest matches (win prob near 0.5)
+    closest = sorted(
+        matches_list,
+        key=lambda m: min(abs((t["win_prob"] or 0.5) - 0.5) for t in m["teams"]),
+    )[:limit]
+
+    return {
+        "season": season,
+        "biggest_epa_swings": by_delta,
+        "biggest_upsets": upsets,
+        "closest_matches": closest,
+    }
+
+
 @router.get("/v1/match/{event_code}/{match_id}", response_model=MatchDetail)
 def get_match(
     event_code: str,

@@ -27,7 +27,7 @@ print(sk.compare(teams=[26914, 32736, 23400]))
 # All methods: get_seasons, get_teams, get_team, get_events,
 # get_event, get_matches, get_match, predict, compare,
 # get_clusters, get_complementarity, get_alliance_partners,
-# get_trajectory_clusters, run_pipeline, get_pipeline_status
+# get_trajectory_clusters
 ```
 
 ---
@@ -57,7 +57,7 @@ pip install -r backend/requirements.txt
 python backend/main.py
 ```
 
-Data is cached in `backend/cache/`. Populate with `POST /v1/data/run?season=2025`.
+Data is cached in `backend/cache/`. Populate with `python backend/run_all_seasons.py`.
 
 ---
 

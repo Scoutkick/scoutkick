@@ -31,6 +31,8 @@ class BaseStorage(ABC):
             "n": row["n"],
             "count": row["count"],
             "norm_epa": row["norm_epa"],
+            "team_country": row.get("team_country"),
+            "team_state": row.get("team_state"),
         }
 
     def _row_to_event(self, row: dict) -> Dict:
@@ -106,7 +108,12 @@ class BaseStorage(ABC):
             "SELECT * FROM team_seasons WHERE team = ? ORDER BY season",
             (team,),
         )
-        return [self._row_to_team(r) for r in rows]
+        result = []
+        for r in rows:
+            entry = self._row_to_team(r)
+            entry["season"] = r["season"]
+            result.append(entry)
+        return result
 
     def save_all_teams(self, epas: Dict[int, "SkewNormal"], counts: Dict[int, int],
                        norm_epas: Optional[Dict[int, float]] = None):
@@ -200,6 +207,17 @@ class BaseStorage(ABC):
             return None
         return self._row_to_event(rows[0])
 
+    def load_team_events_with_metadata(self, team: int) -> List[Dict]:
+        events = [e for e in self.load_team_events() if e["team"] == team]
+        metas = {m["event_code"]: m for m in self.load_all_events_metadata()}
+        for e in events:
+            meta = metas.get(e["event_code"], {})
+            e["name"] = meta.get("name")
+            e["start"] = meta.get("start")
+            e["end"] = meta.get("end")
+            e["location"] = meta.get("location")
+        return events
+
     # ── team_matches ──
 
     def load_event_matches(self, event_code: str) -> List[Dict]:
@@ -250,6 +268,13 @@ class BaseStorage(ABC):
         rows = self._execute(
             "SELECT * FROM team_matches WHERE team = ? AND season = ? ORDER BY processed_at",
             (team, self.season_id),
+        )
+        return [dict(r) for r in rows]
+
+    def load_all_matches(self) -> List[Dict]:
+        rows = self._execute(
+            "SELECT * FROM team_matches WHERE season = ? ORDER BY event_code, match_id",
+            (self.season_id,),
         )
         return [dict(r) for r in rows]
 
@@ -441,3 +466,28 @@ class BaseStorage(ABC):
             (self.season_id,),
         )
         return {r["team"]: dict(r) for r in rows}
+
+    def load_all_districts(self) -> List[Dict]:
+        rows = self._execute("""
+            SELECT e.region_code,
+                   MIN(e.league_code) as league_code,
+                   COUNT(DISTINCT e.event_code) as event_count,
+                   COUNT(DISTINCT te.team) as team_count,
+                   GROUP_CONCAT(DISTINCT e.season ORDER BY e.season) as seasons_csv
+            FROM events e
+            LEFT JOIN team_events te ON e.event_code = te.event_code AND e.season = te.season
+            WHERE e.region_code IS NOT NULL
+            GROUP BY e.region_code
+            ORDER BY e.region_code
+        """)
+        result = []
+        for r in rows:
+            seasons = r["seasons_csv"].split(",") if r.get("seasons_csv") else []
+            result.append({
+                "region_code": r["region_code"],
+                "league_code": r.get("league_code"),
+                "event_count": r["event_count"],
+                "team_count": r["team_count"],
+                "seasons": seasons,
+            })
+        return result

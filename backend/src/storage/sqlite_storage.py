@@ -134,6 +134,26 @@ class SQLiteStorage(BaseStorage):
         for i in range(0, len(params_list), 500):
             self._execute_batch(sql, params_list[i:i + 500])
 
+    def load_team_events_with_metadata(self, team: int) -> list:
+        import json
+        rows = self._execute("""
+            SELECT te.*, e.name, e.start, e.end, e.location_json, e.region_code, e.league_code
+            FROM team_events te
+            LEFT JOIN events e ON te.event_code = e.event_code AND te.season = e.season
+            WHERE te.team = ? AND te.season = ?
+            ORDER BY te.event_code
+        """, (team, self.season_id))
+        result = []
+        for r in rows:
+            ev = self._row_to_event(r)
+            ev["name"] = r.get("name")
+            ev["start"] = r.get("start")
+            ev["end"] = r.get("end")
+            loc = r.get("location_json")
+            ev["location"] = json.loads(loc) if loc else None
+            result.append(ev)
+        return result
+
     def save_all_teams_bulk(self, records: list):
         sql = """
             INSERT INTO team_seasons (team, season, mean_json, var_json,

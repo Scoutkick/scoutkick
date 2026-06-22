@@ -248,25 +248,6 @@ class ScoutKick:
             "season": season,
         })
 
-    # ── Pipeline ──
-
-    def run_pipeline(self, season: str | None = None) -> dict:
-        """Trigger the EPA pipeline for one or all seasons.
-
-        Args:
-            season: Specific season to run, or None for all cached seasons.
-
-        Returns:
-            Dict with status and list of seasons being processed.
-        """
-        if season:
-            return self._post(f"/v1/data/run/{season}")
-        return self._post("/v1/data/run")
-
-    def get_pipeline_status(self) -> dict:
-        """Get current pipeline state (running / done / pending)."""
-        return self._get("/v1/data/status")
-
     # ── Clusters & Complementarity ──
 
     def get_clusters(self, season: str = "2025", n_clusters: int = 8) -> dict:
@@ -324,21 +305,6 @@ class ScoutKick:
         return self._get(
             f"/v1/site/match/{event_code}/{match_id}", {"season": season}
         )
-
-    # ── helpers ──
-
-    def _post(self, path: str) -> Any:
-        url = f"{self.base_url}{path}"
-        try:
-            req = urllib.request.Request(url, method="POST")
-            resp = urllib.request.urlopen(req, timeout=self.timeout)
-            return json.loads(resp.read().decode())
-        except urllib.error.HTTPError as e:
-            detail = _try_decode_error(e)
-            raise ScoutKickError(f"HTTP {e.code}: {detail}") from None
-        except urllib.error.URLError as e:
-            raise ScoutKickError(f"Connection failed: {e.reason}") from None
-
 
 def _try_decode_error(e: urllib.error.HTTPError) -> str:
     try:

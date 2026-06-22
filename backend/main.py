@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     has_data = _check_db_has_data()
     if not has_data:
         logger.warning(
-            "DB is empty (%s). POST /v1/data/run to populate.", db_path,
+            "DB is empty (%s). Run 'python backend/run_all_seasons.py' to populate.", db_path,
         )
     else:
         logger.info("DB has existing data — serving. (%s)", db_path)

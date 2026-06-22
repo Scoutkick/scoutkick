@@ -1,7 +1,7 @@
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import PaginatedResponse, SeasonMeta
+from backend.src.api.schemas import DistributionResponse, PaginatedResponse, SeasonMeta
 from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Season"])
@@ -36,3 +36,46 @@ def get_season(season: str):
     if meta is None:
         raise HTTPException(status_code=404, detail=f"Season {season} not found")
     return _serialize_meta(meta)
+
+
+@router.get("/v1/teams/{season}/distributions", response_model=DistributionResponse)
+def get_team_distributions(season: str):
+    """Get norm_epa distribution (percentiles, histogram) across all teams in a season."""
+    storage = get_storage(season)
+    teams = storage.load_all_teams()
+
+    norm_epas = [v["norm_epa"] for v in teams.values() if v.get("norm_epa") is not None]
+
+    if not norm_epas:
+        raise HTTPException(status_code=404, detail=f"No team data found for season {season}")
+
+    arr = np.array(norm_epas)
+    percentiles = {
+        "p1": float(np.percentile(arr, 1)),
+        "p5": float(np.percentile(arr, 5)),
+        "p10": float(np.percentile(arr, 10)),
+        "p25": float(np.percentile(arr, 25)),
+        "p50": float(np.percentile(arr, 50)),
+        "p75": float(np.percentile(arr, 75)),
+        "p90": float(np.percentile(arr, 90)),
+        "p95": float(np.percentile(arr, 95)),
+        "p99": float(np.percentile(arr, 99)),
+    }
+
+    hist, bin_edges = np.histogram(arr, bins=20)
+    histogram = [
+        {"bin_start": float(bin_edges[i]), "bin_end": float(bin_edges[i + 1]), "count": int(hist[i])}
+        for i in range(len(hist))
+    ]
+
+    return {
+        "season": season,
+        "count": int(len(arr)),
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "mean": float(np.mean(arr)),
+        "median": float(np.median(arr)),
+        "std": float(np.std(arr)),
+        "percentiles": percentiles,
+        "histogram": histogram,
+    }
