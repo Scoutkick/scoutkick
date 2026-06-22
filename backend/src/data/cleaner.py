@@ -14,6 +14,8 @@ class BaseCleaner(ABC):
     COMPOSITE_DIMS: Dict[int, List[str]] = {}
     API_FIELDS: List[str] = []
 
+    _registry: Dict[str, "BaseCleaner"] = {}
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if not cls.API_FIELDS:
@@ -21,6 +23,14 @@ class BaseCleaner(ABC):
             for dim_fields in cls.COMPOSITE_DIMS.values():
                 fields.update(dim_fields)
             cls.API_FIELDS = sorted(fields)
+        if cls.SEASON_ID:
+            BaseCleaner._registry[cls.SEASON_ID] = cls()
+
+    @classmethod
+    def get_cleaner(cls, season_id: str) -> "BaseCleaner":
+        if season_id not in cls._registry:
+            raise ValueError(f"No cleaner registered for season {season_id}")
+        return cls._registry[season_id]
 
     def clean(self, data: Dict[str, Any]) -> np.ndarray:
         vec = np.zeros(FTC_VECTOR_SIZE)
@@ -110,7 +120,7 @@ class FTC2025Cleaner(BaseCleaner):
         return weights
 
 
-# ── 2024: Into The Deep (same name — prev season) ───────────────
+# ── 2024: CENTERSTAGE ────────────────────────────────────────────
 
 class FTC2024Cleaner(BaseCleaner):
     SEASON_ID = "2024"
@@ -282,26 +292,4 @@ class FTC2019Cleaner(BaseCleaner):
     }
 
 
-# ── Registry ─────────────────────────────────────────────────────
 
-class CleanerRegistry:
-    _registry: Dict[str, BaseCleaner] = {}
-
-    @classmethod
-    def register(cls, season_id: str, cleaner: BaseCleaner):
-        cls._registry[season_id] = cleaner
-
-    @classmethod
-    def get_cleaner(cls, season_id: str) -> BaseCleaner:
-        if season_id not in cls._registry:
-            raise ValueError(f"No cleaner registered for season {season_id}")
-        return cls._registry[season_id]
-
-
-CleanerRegistry.register("2025", FTC2025Cleaner())
-CleanerRegistry.register("2024", FTC2024Cleaner())
-CleanerRegistry.register("2023", FTC2023Cleaner())
-CleanerRegistry.register("2022", FTC2022Cleaner())
-CleanerRegistry.register("2021", FTC2021Cleaner())
-CleanerRegistry.register("2020", FTC2020Cleaner())
-CleanerRegistry.register("2019", FTC2019Cleaner())

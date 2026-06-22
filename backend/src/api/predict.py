@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.core.config import get_season_config
+from backend.src.core.constants import CURR_YEAR
 from backend.src.services.epa_service import EPAEngine
 from backend.src.api.deps import get_storage
+from backend.src.api.schemas import CompareResult, PredictionResult
 
 router = APIRouter(tags=["Predict"])
 
@@ -23,12 +25,13 @@ def _load_engine(season: str) -> EPAEngine:
     return engine
 
 
-@router.get("/v1/predict")
+@router.get("/v1/predict", response_model=PredictionResult)
 def predict_match(
     red: str = Query(..., description="Comma-separated team numbers, e.g. '26914,32736'"),
     blue: str = Query(..., description="Comma-separated team numbers, e.g. '23400,24599'"),
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
 ):
+    """Predict the outcome of a match between two alliances given their current EPA ratings."""
     red_teams = [int(t.strip()) for t in red.split(",") if t.strip()]
     blue_teams = [int(t.strip()) for t in blue.split(",") if t.strip()]
 
@@ -60,8 +63,8 @@ def predict_match(
 
     win_prob, red_pred, blue_pred = engine.predict_match(red_teams, blue_teams)
 
-    dims = ["total", "auto", "teleop", "endgame", "rp1", "rp2", "rp3",
-            "auto_classified", "teleop_classified", "teleop_depot"]
+    config = get_season_config(season)
+    dims = config.active_dimensions
     red_pred_dict = {dims[i]: float(red_pred[i]) for i in range(len(dims)) if i < len(red_pred)}
     blue_pred_dict = {dims[i]: float(blue_pred[i]) for i in range(len(dims)) if i < len(blue_pred)}
 
@@ -75,11 +78,12 @@ def predict_match(
     }
 
 
-@router.get("/v1/compare")
+@router.get("/v1/compare", response_model=CompareResult)
 def compare_teams(
     teams: str = Query(..., description="Comma-separated team numbers, e.g. '26914,32736,23400'"),
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
 ):
+    """Compare multiple teams side by side with their EPA component breakdown."""
     team_nums = [int(t.strip()) for t in teams.split(",") if t.strip()]
     if len(team_nums) < 2:
         raise HTTPException(status_code=400, detail="Must provide at least 2 teams")

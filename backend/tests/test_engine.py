@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 from backend.src.core.config import get_season_config
 from backend.src.services.epa_service import EPAEngine
-from backend.src.data.cleaner import CleanerRegistry
+from backend.src.data.cleaner import BaseCleaner
 
 
 class TestEPAEngineInit(unittest.TestCase):
@@ -50,7 +50,7 @@ class TestEPAPredictAttributeUpdate(unittest.TestCase):
     def setUp(self):
         config = get_season_config("2025")
         self.engine = EPAEngine(config=config)
-        self.cleaner = CleanerRegistry.get_cleaner("2025")
+        self.cleaner = BaseCleaner.get_cleaner("2025")
         self.red_teams = [101, 102]
         self.blue_teams = [201, 202]
 

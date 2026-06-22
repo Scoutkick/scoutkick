@@ -5,16 +5,12 @@ from scipy import stats
 
 from backend.src.core.config import SeasonConfig
 from backend.src.core.math import SkewNormal, inv_unit_sigmoid
+from backend.src.core.constants import (
+    NORM_MEAN, NORM_SD, INIT_PENALTY, YEAR_ONE_WEIGHT,
+    MEAN_REVERSION, MIN_TEAMS_FOR_EXPONNORM, NUM_BREAKPOINTS,
+)
 
-NORM_MEAN = 1500.0
-NORM_SD = 250.0
-INIT_PENALTY = 0.2
-YEAR_ONE_WEIGHT = 0.7
-MEAN_REVERSION = 0.4
-
-INIT_EPA = NORM_MEAN - INIT_PENALTY * NORM_SD  # 1450
-
-NUM_BREAKPOINTS = 101
+INIT_EPA = NORM_MEAN - INIT_PENALTY * NORM_SD
 
 
 def _zscore_norm_epa(epas: Dict[int, SkewNormal]) -> Dict[int, float]:
@@ -33,7 +29,7 @@ def _zscore_norm_epa(epas: Dict[int, SkewNormal]) -> Dict[int, float]:
 def compute_norm_epa(epas: Dict[int, SkewNormal]) -> Dict[int, float]:
     totals = np.array([sn.mean[0] for sn in epas.values()])
 
-    if len(totals) < 5:
+    if len(totals) < MIN_TEAMS_FOR_EXPONNORM:
         return _zscore_norm_epa(epas)
 
     try:

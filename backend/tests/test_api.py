@@ -10,6 +10,15 @@ import os
 API_BASE = "http://127.0.0.1:8000"
 
 
+def _fetch_teams(limit=5) -> list[int]:
+    try:
+        req = urllib.request.Request(f"{API_BASE}/v1/teams?season=2025&limit={limit}")
+        resp = json.loads(urllib.request.urlopen(req).read())
+        return [t["team"] for t in resp.get("value", [])]
+    except Exception:
+        return []
+
+
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scoutkick/
 _PARENT_ROOT = os.path.dirname(_REPO_ROOT)  # EPA FTC/
 
@@ -124,7 +133,9 @@ class TestAPIEvents(WithServer):
 class TestAPISeasons(WithServer):
     def test_list_seasons(self):
         resp = json.loads(urllib.request.urlopen(f"{API_BASE}/v1/seasons").read())
-        self.assertIsInstance(resp, list)
+        self.assertIn("value", resp)
+        self.assertIn("count", resp)
+        self.assertIsInstance(resp["value"], list)
 
     def test_get_season(self):
         resp = json.loads(urllib.request.urlopen(f"{API_BASE}/v1/season/2025").read())
@@ -141,16 +152,24 @@ class TestAPISeasons(WithServer):
 
 
 class TestAPIPredict(WithServer):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        teams = _fetch_teams(5)
+        assert len(teams) >= 4, "Need at least 4 teams in DB for predict tests"
+        cls.r1, cls.r2, cls.b1, cls.b2 = teams[0], teams[1], teams[2], teams[3]
+
     def test_predict_returns_win_prob(self):
         resp = json.loads(urllib.request.urlopen(
-            f"{API_BASE}/v1/predict?red=3491,32736&blue=23400,24599&season=2025").read())
+            f"{API_BASE}/v1/predict?red={self.r1},{self.r2}&blue={self.b1},{self.b2}&season=2025").read())
         self.assertIn("red_win_prob", resp)
         self.assertIn("blue_win_prob", resp)
         self.assertAlmostEqual(resp["red_win_prob"] + resp["blue_win_prob"], 1.0)
 
     def test_predict_returns_team_details(self):
         resp = json.loads(urllib.request.urlopen(
-            f"{API_BASE}/v1/predict?red=3491,32736&blue=23400,24599&season=2025").read())
+            f"{API_BASE}/v1/predict?red={self.r1},{self.r2}&blue={self.b1},{self.b2}&season=2025").read())
         self.assertEqual(len(resp["red_teams"]), 2)
         self.assertEqual(len(resp["blue_teams"]), 2)
         self.assertIn("total", resp["red_teams"][0])
@@ -158,14 +177,14 @@ class TestAPIPredict(WithServer):
 
     def test_predict_400_for_wrong_team_count(self):
         try:
-            urllib.request.urlopen(f"{API_BASE}/v1/predict?red=3491&blue=23400,24599&season=2025")
+            urllib.request.urlopen(f"{API_BASE}/v1/predict?red={self.r1}&blue={self.b1},{self.b2}&season=2025")
             self.fail("Expected 400")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 400)
 
     def test_compare_teams(self):
         resp = json.loads(urllib.request.urlopen(
-            f"{API_BASE}/v1/compare?teams=3491,32736,23400&season=2025").read())
+            f"{API_BASE}/v1/compare?teams={self.r1},{self.r2},{self.b1}&season=2025").read())
         self.assertIn("teams", resp)
         self.assertEqual(len(resp["teams"]), 3)
 

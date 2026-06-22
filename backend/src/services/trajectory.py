@@ -66,6 +66,16 @@ def compute_trajectory_clusters(
         feat_list.append(feats)
         team_nums.append(team_num)
 
+    if not feat_list:
+        return {
+            "season": season,
+            "n_clusters": 0,
+            "feature_keys": [],
+            "min_matches": MIN_MATCHES,
+            "clusters": [],
+            "teams": {},
+        }
+
     if len(feat_list) < n_clusters:
         n_clusters = max(2, len(feat_list))
 

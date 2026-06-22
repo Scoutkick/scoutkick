@@ -2,11 +2,16 @@ services:
   - type: web
     name: scoutkick
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /v1/health
     envVars:
       - key: PYTHONPATH
         value: .
+      - key: EPA_DB_PATH
+        value: /opt/render/project/cache/epa_data.db
+      - key: FTCSCOUT_CACHE_DIR
+        value: /opt/render/project/cache/ftcscout
     disk:
       name: cache
       mountPath: /opt/render/project/cache

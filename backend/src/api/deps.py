@@ -1,9 +1,8 @@
-import os
-from backend.src.storage.sqlite_storage import SQLiteStorage
+from backend.src.core.constants import CURR_YEAR
+from backend.src.storage import create_storage, get_db_path
 
-_API_DIR = os.path.dirname(os.path.abspath(__file__))  # .../scoutkick/backend/src/api
-DB_PATH = os.path.join(_API_DIR, "..", "..", "..", "..", "cache", "epa_data.db")
+DB_PATH = get_db_path()
 
 
-def get_storage(season: str = "2025") -> SQLiteStorage:
-    return SQLiteStorage(DB_PATH, season)
+def get_storage(season: str = CURR_YEAR):
+    return create_storage(season, DB_PATH)

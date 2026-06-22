@@ -1,19 +1,23 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
+from backend.src.api.schemas import EventDetail, EventMatch, EventSummary, PaginatedResponse
+from backend.src.api.utils import sort_and_page
+from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Event"])
 
 
-@router.get("/v1/events")
+@router.get("/v1/events", response_model=PaginatedResponse)
 def list_events(
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
     event_type: Optional[str] = Query(None, description="Filter by event type (Qualifier, Championship, etc.)"),
     metric: str = Query("epa_max", description="Sort metric: epa_max, epa_mean, teams, event_code"),
     ascending: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    """List all events in a season with aggregate EPA stats per event."""
     storage = get_storage(season)
     events_data = storage.load_team_events()
 
@@ -49,20 +53,17 @@ def list_events(
             "epa_mean": info["epa_mean_sum"] / info["epa_mean_count"] if info["epa_mean_count"] > 0 else None,
         })
 
-    sort_key_map = {
+    return sort_and_page(results, {
         "epa_max": lambda x: x["epa_max"] or 0,
         "epa_mean": lambda x: x["epa_mean"] or 0,
         "teams": lambda x: x["team_count"],
         "event_code": lambda x: x["event_code"],
-    }
-    key_fn = sort_key_map.get(metric, sort_key_map["epa_max"])
-    results.sort(key=key_fn, reverse=not ascending)
-    sliced = results[offset:offset + limit]
-    return {"value": sliced, "count": len(results)}
+    }, metric, ascending, offset, limit, default_metric="epa_max")
 
 
-@router.get("/v1/event/{event_code}")
-def get_event(event_code: str, season: str = Query("2025")):
+@router.get("/v1/event/{event_code}", response_model=EventDetail)
+def get_event(event_code: str, season: str = Query(CURR_YEAR)):
+    """Get all teams and their EPA stats for a specific event."""
     storage = get_storage(season)
     all_events = storage.load_team_events()
     event_teams = [e for e in all_events if e["event_code"] == event_code]
@@ -92,31 +93,25 @@ def get_event(event_code: str, season: str = Query("2025")):
     }
 
 
-@router.get("/v1/event/{event_code}/matches")
+@router.get("/v1/event/{event_code}/matches", response_model=PaginatedResponse)
 def get_event_matches(
     event_code: str,
-    season: str = Query("2025"),
+    season: str = Query(CURR_YEAR),
     elim: Optional[bool] = Query(None),
     metric: str = Query("match_id", description="Sort metric: match_id"),
     ascending: bool = Query(True),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
+    """Get all matches for an event with per-team EPA deltas."""
     storage = get_storage(season)
-    all_events = storage.load_team_events()
-    teams_in_event = {e["team"] for e in all_events if e["event_code"] == event_code}
+    all_matches = storage.load_event_matches(event_code)
 
-    if not teams_in_event:
+    if not all_matches:
         raise HTTPException(status_code=404, detail=f"Event {event_code} not found in season {season}")
-
-    all_matches = []
-    for team in teams_in_event:
-        all_matches.extend(storage.load_team_matches(team))
 
     match_map = {}
     for m in all_matches:
-        if m["event_code"] != event_code:
-            continue
         key = (m["event_code"], m["match_id"])
         if key not in match_map:
             match_map[key] = {
@@ -136,7 +131,6 @@ def get_event_matches(
     if elim is not None:
         results = [r for r in results if r["is_elim"] == elim]
 
-    results.sort(key=lambda x: int(x["match_id"]) if x["match_id"].isdigit() else x["match_id"],
-                 reverse=not ascending)
-    sliced = results[offset:offset + limit]
-    return {"value": sliced, "count": len(results)}
+    return sort_and_page(results, {
+        "match_id": lambda x: int(x["match_id"]) if x["match_id"].isdigit() else x["match_id"],
+    }, metric, ascending, offset, limit, default_metric="match_id")
