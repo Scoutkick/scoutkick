@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Optional
 
 from backend.src.core.math import SkewNormal, unit_sigmoid
 from backend.src.core.config import SeasonConfig
-from backend.src.core.constants import K_FACTOR, ELIM_WEIGHT, DECAY_RATE
+from backend.src.core.constants import K_FACTOR, ELIM_WEIGHT, DECAY_RATE, MAX_ALPHA
 
 
 class EPAEngine:
@@ -21,8 +21,10 @@ class EPAEngine:
         self.num_teams = num_teams
         self.elim_weight = elim_weight
         self.decay_rate = decay_rate
+        self.max_alpha = MAX_ALPHA
         self.epas: Dict[int, SkewNormal] = {}
         self.counts: Dict[int, int] = {}
+        self.match_dates: Dict[int, str] = {}
 
     def get_team(self, team_num: int) -> SkewNormal:
         if team_num not in self.epas:
@@ -48,7 +50,10 @@ class EPAEngine:
             red_mean[i] = unit_sigmoid(red_mean[i])
             blue_mean[i] = unit_sigmoid(blue_mean[i])
 
-        norm_diff = (red_mean[0] - blue_mean[0]) / self.score_sd
+        red_var = sum(self.get_team(t).var[0] for t in red_teams)
+        blue_var = sum(self.get_team(t).var[0] for t in blue_teams)
+        combined_sd = np.sqrt(red_var + blue_var + self.score_sd ** 2)
+        norm_diff = (red_mean[0] - blue_mean[0]) / combined_sd
         win_prob = 1 / (1 + 10 ** (self.k * norm_diff))
 
         return win_prob, red_mean, blue_mean
@@ -79,8 +84,10 @@ class EPAEngine:
     def update_team(self, team_num: int, attribution: np.ndarray, is_elim: bool = False):
         team = self.get_team(team_num)
         n = self.counts[team_num] if team_num in self.counts else 0
-        alpha = 1.0 / (1.0 + n * self.decay_rate)
-        weight = self.elim_weight if is_elim else 1.0
-        team.add_obs(attribution, alpha, weight)
-        if not is_elim:
+        alpha = min(self.max_alpha, 1.0 / (1.0 + n * self.decay_rate))
+        weight = 1.0
+        if is_elim:
+            weight = self.elim_weight
+        else:
             self.counts[team_num] = n + 1
+        team.add_obs(attribution, alpha, weight)

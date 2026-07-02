@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from abc import ABC
 from backend.src.core.config import FTC_VECTOR_SIZE
 
@@ -131,6 +131,8 @@ class FTC2024Cleaner(BaseCleaner):
         "autoParkPoints", "dcParkPoints",
         "autoSamplePoints", "autoSpecimenPoints",
         "dcSamplePoints", "dcSpecimenPoints",
+        "autoPark1", "autoPark2",
+        "dcPark1", "dcPark2",
     ]
 
     FIELD_TO_EPA_INDEX = {
@@ -140,6 +142,18 @@ class FTC2024Cleaner(BaseCleaner):
     }
 
     COMPOSITE_DIMS = {3: ["autoParkPoints", "dcParkPoints"]}
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        p1 = float(raw_scores.get("autoPark1", 0)) + float(raw_scores.get("dcPark1", 0))
+        p2 = float(raw_scores.get("autoPark2", 0)) + float(raw_scores.get("dcPark2", 0))
+        total = p1 + p2
+        if total > 0:
+            weights[0, 3] = p1 / total
+            weights[1, 3] = p2 / total
+        return weights
 
 
 # ── 2023: CENTERSTAGE ────────────────────────────────────────────
@@ -152,6 +166,9 @@ class FTC2023Cleaner(BaseCleaner):
         "totalPointsNp", "autoPoints", "dcPoints", "egPoints",
         "autoNavPoints", "autoPixelPoints", "purplePoints", "yellowPoints",
         "egNavPoints", "dronePoints", "setLinePoints", "mosaicPoints",
+        "autoNav1", "autoNav2", "purple1", "purple2",
+        "yellow1", "yellow2", "drone1", "drone2",
+        "egNav2023_1", "egNav2023_2",
     ]
 
     FIELD_TO_EPA_INDEX = {
@@ -160,6 +177,45 @@ class FTC2023Cleaner(BaseCleaner):
         "dcPoints": 2,
         "egPoints": 3,
     }
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        an1 = float(raw_scores.get("autoNav1", 0))
+        an2 = float(raw_scores.get("autoNav2", 0))
+        auto_nav_total = an1 + an2
+        auto_total = float(raw_scores.get("autoPoints", 0))
+        if auto_total > 0 and auto_nav_total > 0:
+            known_share = auto_nav_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (an1 / auto_total) + unknown_share * 0.5
+            weights[1, 1] = (an2 / auto_total) + unknown_share * 0.5
+        eg_nav_1 = float(raw_scores.get("egNav2023_1", 0))
+        eg_nav_2 = float(raw_scores.get("egNav2023_2", 0))
+        dr1 = float(raw_scores.get("drone1", 0))
+        dr2 = float(raw_scores.get("drone2", 0))
+        purple1 = float(raw_scores.get("purple1", 0))
+        purple2 = float(raw_scores.get("purple2", 0))
+        yellow1 = float(raw_scores.get("yellow1", 0))
+        yellow2 = float(raw_scores.get("yellow2", 0))
+        known_eg = eg_nav_1 + eg_nav_2 + dr1 + dr2
+        known_dc = purple1 + purple2 + yellow1 + yellow2
+        eg_total = float(raw_scores.get("egPoints", 0))
+        if eg_total > 0 and known_eg > 0:
+            r1_eg_share = (eg_nav_1 + dr1) / eg_total
+            r2_eg_share = (eg_nav_2 + dr2) / eg_total
+            unknown_eg_share = 1.0 - (known_eg / eg_total)
+            weights[0, 3] = r1_eg_share + unknown_eg_share * 0.5
+            weights[1, 3] = r2_eg_share + unknown_eg_share * 0.5
+        dc_total = float(raw_scores.get("dcPoints", 0))
+        if dc_total > 0 and known_dc > 0:
+            r1_dc_share = (purple1 + yellow1) / dc_total
+            r2_dc_share = (purple2 + yellow2) / dc_total
+            unknown_dc_share = 1.0 - (known_dc / dc_total)
+            weights[0, 2] = r1_dc_share + unknown_dc_share * 0.5
+            weights[1, 2] = r2_dc_share + unknown_dc_share * 0.5
+        return weights
 
 
 # ── 2022: Power Play ────────────────────────────────────────────
@@ -172,6 +228,8 @@ class FTC2022Cleaner(BaseCleaner):
         "totalPointsNp", "autoPoints", "dcPoints", "egPoints",
         "autoNavPoints", "autoConePoints",
         "egNavPoints", "ownershipPoints", "circuitPoints",
+        "autoNav2022_1", "autoNav2022_2",
+        "egNav1", "egNav2",
     ]
 
     FIELD_TO_EPA_INDEX = {
@@ -180,6 +238,30 @@ class FTC2022Cleaner(BaseCleaner):
         "dcPoints": 2,
         "egPoints": 3,
     }
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        an1 = float(raw_scores.get("autoNav2022_1", 0))
+        an2 = float(raw_scores.get("autoNav2022_2", 0))
+        auto_nav_total = an1 + an2
+        auto_total = float(raw_scores.get("autoPoints", 0))
+        if auto_total > 0 and auto_nav_total > 0:
+            known_share = auto_nav_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (an1 / auto_total) + unknown_share * 0.5
+            weights[1, 1] = (an2 / auto_total) + unknown_share * 0.5
+        en1 = float(raw_scores.get("egNav1", 0))
+        en2 = float(raw_scores.get("egNav2", 0))
+        eg_nav_total = en1 + en2
+        eg_total = float(raw_scores.get("egPoints", 0))
+        if eg_total > 0 and eg_nav_total > 0:
+            known_share = eg_nav_total / eg_total
+            unknown_share = 1.0 - known_share
+            weights[0, 3] = (en1 / eg_total) + unknown_share * 0.5
+            weights[1, 3] = (en2 / eg_total) + unknown_share * 0.5
+        return weights
 
 
 # ── 2021: Freight Frenzy ─────────────────────────────────────────
@@ -188,12 +270,26 @@ class FTC2021Cleaner(BaseCleaner):
     SEASON_ID = "2021"
     GRAPHQL_FRAGMENT = ""
 
+    PER_ROBOT_TRAD = [
+        "autoNavigated1", "autoNavigated2",
+        "autoFreight1", "autoFreight2",
+        "dcFreight1", "dcFreight2",
+        "egParked1", "egParked2",
+    ]
+
     TRAD_FIELDS = [
         "totalPointsNp", "autoPoints", "dcPoints", "egPoints",
         "autoCarouselPoints", "autoNavPoints", "autoFreightPoints", "autoBonusPoints",
         "dcAllianceHubPoints", "dcSharedHubPoints", "dcStoragePoints",
         "egDuckPoints", "allianceBalancedPoints", "sharedUnbalancedPoints",
         "egParkPoints", "cappingPoints",
+    ] + PER_ROBOT_TRAD
+
+    PER_ROBOT_REMOTE = [
+        "autoNavigated1", "autoNavigated2",
+        "autoFreight1", "autoFreight2",
+        "dcFreight1", "dcFreight2",
+        "egParked1", "egParked2",
     ]
 
     REMOTE_FIELDS = [
@@ -202,7 +298,7 @@ class FTC2021Cleaner(BaseCleaner):
         "dcAllianceHubPoints", "dcStoragePoints",
         "egDuckPoints", "allianceBalancedPoints",
         "egParkPoints", "cappingPoints",
-    ]
+    ] + PER_ROBOT_REMOTE
 
     FIELD_TO_EPA_INDEX = {
         "totalPointsNp": 0,
@@ -210,6 +306,30 @@ class FTC2021Cleaner(BaseCleaner):
         "dcPoints": 2,
         "egPoints": 3,
     }
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        an1 = float(raw_scores.get("autoNavigated1", 0))
+        an2 = float(raw_scores.get("autoNavigated2", 0))
+        auto_nav_total = an1 + an2
+        auto_total = float(raw_scores.get("autoPoints", 0))
+        if auto_total > 0 and auto_nav_total > 0:
+            known_share = auto_nav_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (an1 / auto_total) + unknown_share * 0.5
+            weights[1, 1] = (an2 / auto_total) + unknown_share * 0.5
+        ep1 = float(raw_scores.get("egParked1", 0))
+        ep2 = float(raw_scores.get("egParked2", 0))
+        eg_park_total = ep1 + ep2
+        eg_total = float(raw_scores.get("egPoints", 0))
+        if eg_total > 0 and eg_park_total > 0:
+            known_share = eg_park_total / eg_total
+            unknown_share = 1.0 - known_share
+            weights[0, 3] = (ep1 / eg_total) + unknown_share * 0.5
+            weights[1, 3] = (ep2 / eg_total) + unknown_share * 0.5
+        return weights
 
     def get_graphql_fragment(self) -> str:
         trad = "\n".join(f"            {f}" for f in self.TRAD_FIELDS)
@@ -234,17 +354,29 @@ class FTC2020Cleaner(BaseCleaner):
     SEASON_ID = "2020"
     GRAPHQL_FRAGMENT = ""
 
+    PER_ROBOT_TRAD = [
+        "autoWobble1", "autoWobble2",
+        "autoNav2020_1", "autoNav2020_2",
+        "wobbleEndPos1", "wobbleEndPos2",
+    ]
+
     TRAD_FIELDS = [
         "totalPointsNp", "autoPoints", "dcPoints", "egPoints",
         "autoNavPoints", "autoTowerPoints", "autoWobblePoints", "autoPowershotPoints",
         "egWobblePoints", "egPowershotPoints", "egWobbleRingPoints",
+    ] + PER_ROBOT_TRAD
+
+    PER_ROBOT_REMOTE = [
+        "autoWobble1", "autoWobble2",
+        "autoNav2020_1", "autoNav2020_2",
+        "wobbleEndPos1", "wobbleEndPos2",
     ]
 
     REMOTE_FIELDS = [
         "totalPointsNp", "autoPoints", "dcPoints", "egPoints",
         "autoNavPoints", "autoTowerPoints", "autoWobblePoints", "autoPowershotPoints",
         "egWobblePoints", "egPowershotPoints", "egWobbleRingPoints",
-    ]
+    ] + PER_ROBOT_REMOTE
 
     FIELD_TO_EPA_INDEX = {
         "totalPointsNp": 0,
@@ -252,6 +384,38 @@ class FTC2020Cleaner(BaseCleaner):
         "dcPoints": 2,
         "egPoints": 3,
     }
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        an1 = float(raw_scores.get("autoNav2020_1", 0))
+        an2 = float(raw_scores.get("autoNav2020_2", 0))
+        auto_nav_total = an1 + an2
+        auto_total = float(raw_scores.get("autoPoints", 0))
+        if auto_total > 0 and auto_nav_total > 0:
+            known_share = auto_nav_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (an1 / auto_total) + unknown_share * 0.5
+            weights[1, 1] = (an2 / auto_total) + unknown_share * 0.5
+        aw1 = float(raw_scores.get("autoWobble1", 0))
+        aw2 = float(raw_scores.get("autoWobble2", 0))
+        wobble_auto_total = aw1 + aw2
+        if auto_total > 0 and wobble_auto_total > 0:
+            known_share = wobble_auto_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (weights[0, 1] + (aw1 / auto_total) + unknown_share * 0.5) / 2
+            weights[1, 1] = (weights[1, 1] + (aw2 / auto_total) + unknown_share * 0.5) / 2
+        we1 = float(raw_scores.get("wobbleEndPos1", 0))
+        we2 = float(raw_scores.get("wobbleEndPos2", 0))
+        wobble_eg_total = we1 + we2
+        eg_total = float(raw_scores.get("egPoints", 0))
+        if eg_total > 0 and wobble_eg_total > 0:
+            known_share = wobble_eg_total / eg_total
+            unknown_share = 1.0 - known_share
+            weights[0, 3] = (we1 / eg_total) + unknown_share * 0.5
+            weights[1, 3] = (we2 / eg_total) + unknown_share * 0.5
+        return weights
 
     def get_graphql_fragment(self) -> str:
         trad = "\n".join(f"            {f}" for f in self.TRAD_FIELDS)
@@ -282,6 +446,9 @@ class FTC2019Cleaner(BaseCleaner):
         "dcDeliveryPoints", "dcPlacementPoints",
         "skyscraperBonusPoints", "cappingPoints",
         "egParkPoints", "egFoundationMovedPoints",
+        "autoNav2019_1", "autoNav2019_2",
+        "egParked1", "egParked2",
+        "capLevel1", "capLevel2",
     ]
 
     FIELD_TO_EPA_INDEX = {
@@ -290,6 +457,30 @@ class FTC2019Cleaner(BaseCleaner):
         "dcPoints": 2,
         "egPoints": 3,
     }
+
+    def get_attribution_weights(self, raw_scores: Dict[str, Any],
+                                team_numbers: List[int]) -> np.ndarray:
+        n = len(team_numbers)
+        weights = np.full((n, FTC_VECTOR_SIZE), 1.0 / n)
+        an1 = float(raw_scores.get("autoNav2019_1", 0))
+        an2 = float(raw_scores.get("autoNav2019_2", 0))
+        auto_nav_total = an1 + an2
+        auto_total = float(raw_scores.get("autoPoints", 0))
+        if auto_total > 0 and auto_nav_total > 0:
+            known_share = auto_nav_total / auto_total
+            unknown_share = 1.0 - known_share
+            weights[0, 1] = (an1 / auto_total) + unknown_share * 0.5
+            weights[1, 1] = (an2 / auto_total) + unknown_share * 0.5
+        ep1 = float(raw_scores.get("egParked1", 0))
+        ep2 = float(raw_scores.get("egParked2", 0))
+        eg_park_total = ep1 + ep2
+        eg_total = float(raw_scores.get("egPoints", 0))
+        if eg_total > 0 and eg_park_total > 0:
+            known_share = eg_park_total / eg_total
+            unknown_share = 1.0 - known_share
+            weights[0, 3] = (ep1 / eg_total) + unknown_share * 0.5
+            weights[1, 3] = (ep2 / eg_total) + unknown_share * 0.5
+        return weights
 
 
 

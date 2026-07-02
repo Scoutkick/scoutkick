@@ -57,7 +57,7 @@ def compute_clusters(
     normalized = normalize(vectors, norm="l1")
 
     actual_k = min(n_clusters, len(vectors))
-    kmeans = KMeans(n_clusters=actual_k, random_state=random_state, n_init="auto")
+    kmeans = KMeans(n_clusters=actual_k, random_state=random_state, n_init=10)
     assignments = kmeans.fit_predict(normalized)
 
     # Build cluster info

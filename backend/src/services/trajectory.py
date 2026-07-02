@@ -86,7 +86,7 @@ def compute_trajectory_clusters(
     X_scaled = scaler.fit_transform(X)
 
     actual_k = min(n_clusters, len(X_scaled))
-    kmeans = KMeans(n_clusters=actual_k, random_state=random_state, n_init="auto")
+    kmeans = KMeans(n_clusters=actual_k, random_state=random_state, n_init=10)
     assignments = kmeans.fit_predict(X_scaled)
 
     # Build cluster profiles

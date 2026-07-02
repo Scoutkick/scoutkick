@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.WARNING)
 
 def validate_season(season_id: str):
     cleaner = BaseCleaner.get_cleaner(season_id)
-    raw = get_matches(cleaner, cache=True)
+    raw, _ = get_matches(cleaner, cache=True)
 
     outcomes = {}
     for m in raw:

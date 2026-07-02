@@ -1,4 +1,4 @@
-from typing import Optional
+from functools import lru_cache
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
 from backend.src.core.constants import CURR_YEAR
@@ -12,6 +12,14 @@ from backend.src.services.trajectory import (
 router = APIRouter(tags=["Cluster"])
 
 
+@lru_cache(maxsize=32)
+def _compute_clusters_cached(season: str, n_clusters: int) -> dict:
+    from backend.src.storage import create_storage
+    storage = create_storage(season)
+    teams = storage.load_all_teams()
+    return compute_clusters(teams, season, n_clusters=n_clusters)
+
+
 @router.get("/v1/clusters")
 def list_clusters(
     season: str = Query(CURR_YEAR, description="Season year"),
@@ -23,7 +31,7 @@ def list_clusters(
     if not teams:
         raise HTTPException(status_code=404, detail=f"No teams found for season {season}")
 
-    result = compute_clusters(teams, season, n_clusters=n_clusters)
+    result = _compute_clusters_cached(season, n_clusters)
     return result
 
 
@@ -39,8 +47,7 @@ def get_team_playstyle(
     if params is None:
         raise HTTPException(status_code=404, detail=f"Team {team} not found in season {season}")
 
-    teams = storage.load_all_teams()
-    cluster_result = compute_clusters(teams, season, n_clusters=n_clusters)
+    cluster_result = _compute_clusters_cached(season, n_clusters)
     detail = get_team_cluster_detail(storage, team, cluster_result)
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Could not classify team {team}")

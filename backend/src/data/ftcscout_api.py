@@ -1,7 +1,8 @@
+import json
 import logging
 import os
 import hashlib
-import pickle
+import tempfile
 from typing import Any, Optional, Union
 from requests import Session
 
@@ -36,15 +37,15 @@ def _post_graphql(query: str, variables: Optional[dict] = None) -> Union[Any, bo
 def get_ftcscout(query: str, variables: Optional[dict] = None, cache: bool = True) -> Union[Any, bool]:
     """
     Wraps GraphQL calls with local disk caching.
-    Caches are stored as pickle files based on the hash of the query and variables.
+    Caches are stored as JSON files based on the hash of the query and variables.
     """
     query_hash = hashlib.sha256(f"{query}{variables}".encode()).hexdigest()
-    cache_path = os.path.join(CACHE_DIR, f"{query_hash}.p")
+    cache_path = os.path.join(CACHE_DIR, f"{query_hash}.json")
 
     if cache and os.path.exists(cache_path):
         try:
-            with open(cache_path, "rb") as f:
-                return pickle.load(f)
+            with open(cache_path, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception as e:
             logger.warning("Cache read error: %s", e)
 
@@ -53,8 +54,14 @@ def get_ftcscout(query: str, variables: Optional[dict] = None, cache: bool = Tru
     if data is not False:
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(cache_path, "wb") as f:
-                pickle.dump(data, f)
+            fd, tmp_path = tempfile.mkstemp(dir=CACHE_DIR, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+                os.replace(tmp_path, cache_path)
+            except Exception:
+                os.unlink(tmp_path)
+                raise
         except Exception as e:
             logger.warning("Cache write error: %s", e)
 

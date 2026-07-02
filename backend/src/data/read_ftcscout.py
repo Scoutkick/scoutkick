@@ -1,25 +1,29 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from backend.src.data.ftcscout_api import get_ftcscout
 from backend.src.data.cleaner import BaseCleaner
 
 
 def _month_ranges(season: str) -> List[tuple]:
-    """Inclusive month ranges. End dates extended by 1 day for GraphQL's exclusive upper bound."""
+    """Overlapping month ranges with 7-day overlap so multi-day events
+    crossing month boundaries (e.g. FTC Championship Apr 29 - May 2)
+    are caught by at least one range. Overlaps are deduplicated by
+    event code in get_matches()."""
     s = int(season)
+    OVERLAP = 7
     return [
-        (f"{s}-09-01", f"{s}-10-01"),
-        (f"{s}-10-01", f"{s}-11-01"),
-        (f"{s}-11-01", f"{s}-12-01"),
-        (f"{s}-12-01", f"{s + 1}-01-01"),
-        (f"{s + 1}-01-01", f"{s + 1}-02-01"),
-        (f"{s + 1}-02-01", f"{s + 1}-03-01"),
-        (f"{s + 1}-03-01", f"{s + 1}-04-01"),
-        (f"{s + 1}-04-01", f"{s + 1}-05-01"),
-        (f"{s + 1}-05-01", f"{s + 1}-06-01"),
-        (f"{s + 1}-06-01", f"{s + 1}-07-01"),
-        (f"{s + 1}-07-01", f"{s + 1}-08-01"),
-        (f"{s + 1}-08-01", f"{s + 1}-09-01"),
+        (f"{s}-09-01", f"{s}-10-{1+OVERLAP:02d}"),
+        (f"{s}-10-01", f"{s}-11-{1+OVERLAP:02d}"),
+        (f"{s}-11-01", f"{s}-12-{1+OVERLAP:02d}"),
+        (f"{s}-12-01", f"{s + 1}-01-{1+OVERLAP:02d}"),
+        (f"{s + 1}-01-01", f"{s + 1}-02-{1+OVERLAP:02d}"),
+        (f"{s + 1}-02-01", f"{s + 1}-03-{1+OVERLAP:02d}"),
+        (f"{s + 1}-03-01", f"{s + 1}-04-{1+OVERLAP:02d}"),
+        (f"{s + 1}-04-01", f"{s + 1}-05-{1+OVERLAP:02d}"),
+        (f"{s + 1}-05-01", f"{s + 1}-06-{1+OVERLAP:02d}"),
+        (f"{s + 1}-06-01", f"{s + 1}-07-{1+OVERLAP:02d}"),
+        (f"{s + 1}-07-01", f"{s + 1}-08-{1+OVERLAP:02d}"),
+        (f"{s + 1}-08-01", f"{s + 1}-09-{1+OVERLAP:02d}"),
     ]
 
 
@@ -33,6 +37,11 @@ def _paginated_query(season: str, fields: str, start: str, end: str) -> str:
     """
 
 
+def _station_sort_key(t: dict) -> int:
+    station = t.get("station", "")
+    return 0 if station == "One" else 1
+
+
 def _split_alliance_teams(match: dict) -> tuple:
     red, blue = [], []
     for t in match.get("teams") or []:
@@ -41,10 +50,12 @@ def _split_alliance_teams(match: dict) -> tuple:
         tn = t.get("teamNumber")
         alliance = t.get("alliance")
         if alliance == "Red":
-            red.append(tn)
+            red.append(t)
         elif alliance == "Blue":
-            blue.append(tn)
-    return red, blue
+            blue.append(t)
+    red.sort(key=_station_sort_key)
+    blue.sort(key=_station_sort_key)
+    return [t.get("teamNumber") for t in red], [t.get("teamNumber") for t in blue]
 
 
 def _extract_alliance_scores(match: dict) -> tuple:
@@ -64,17 +75,35 @@ def _extract_alliance_scores(match: dict) -> tuple:
     return red_scores, blue_scores
 
 
-def parse_matches(data: dict) -> List[Dict[str, Any]]:
+def parse_matches(data: dict) -> tuple:
+    """Returns (matches_list, team_metadata_dict)."""
     if not data or "eventsSearch" not in data:
-        return []
+        return [], {}
 
     all_matches = []
+    all_teams: Dict[int, Dict] = {}
     for event in data["eventsSearch"]:
         event_code = event["code"]
         event_type = event.get("type")
         for m in event.get("matches") or []:
             if not m.get("hasBeenPlayed"):
                 continue
+
+            # Extract team metadata from the nested team object
+            for t in m.get("teams") or []:
+                if not t:
+                    continue
+                tn = t.get("teamNumber")
+                if tn and tn not in all_teams:
+                    team_obj = t.get("team") or {}
+                    loc = team_obj.get("location") or {}
+                    all_teams[tn] = {
+                        "name": team_obj.get("name"),
+                        "school_name": team_obj.get("schoolName"),
+                        "city": loc.get("city"),
+                        "state": loc.get("state"),
+                        "country": loc.get("country"),
+                    }
 
             red_teams, blue_teams = _split_alliance_teams(m)
             red_scores, blue_scores = _extract_alliance_scores(m)
@@ -88,13 +117,14 @@ def parse_matches(data: dict) -> List[Dict[str, Any]]:
                 "event": event_code,
                 "event_type": event_type,
                 "tournament_level": m.get("tournamentLevel"),
+                "start_date": m.get("scheduledStart"),
                 "red_teams": red_teams,
                 "blue_teams": blue_teams,
                 "red_scores": red_scores,
                 "blue_scores": blue_scores,
             })
 
-    return all_matches
+    return all_matches, all_teams
 
 
 def _fetch_events_for_range(season: str, fields: str, start: str, end: str, cache: bool) -> List[Dict]:
@@ -105,7 +135,7 @@ def _fetch_events_for_range(season: str, fields: str, start: str, end: str, cach
     return data.get("eventsSearch") or []
 
 
-def get_matches(cleaner: BaseCleaner, cache: bool = True) -> List[Dict[str, Any]]:
+def get_matches(cleaner: BaseCleaner, cache: bool = True) -> tuple:
     fragment = cleaner.get_graphql_fragment()
     fields = f"""
         code
@@ -114,10 +144,20 @@ def get_matches(cleaner: BaseCleaner, cache: bool = True) -> List[Dict[str, Any]
           id
           hasBeenPlayed
           tournamentLevel
+          scheduledStart
           teams {{
             teamNumber
             alliance
             station
+            team {{
+              name
+              schoolName
+              location {{
+                city
+                state
+                country
+              }}
+            }}
           }}
           scores {{
             {fragment}

@@ -13,7 +13,11 @@ class TestSQLiteStorage(unittest.TestCase):
         self.storage = SQLiteStorage(self.tmp.name, self.season)
 
     def tearDown(self):
-        os.unlink(self.tmp.name)
+        self.storage.close()
+        try:
+            os.unlink(self.tmp.name)
+        except PermissionError:
+            pass
 
     # ── team_seasons ──
 
@@ -172,7 +176,11 @@ class TestTeamEventsWithArrays(unittest.TestCase):
         self.storage = SQLiteStorage(self.tmp.name, self.season)
 
     def tearDown(self):
-        os.unlink(self.tmp.name)
+        self.storage.close()
+        try:
+            os.unlink(self.tmp.name)
+        except PermissionError:
+            pass
 
     def test_save_event_with_mean_var_arrays(self):
         mean = np.array([80.0] + [0.0] * 31)

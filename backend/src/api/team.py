@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import TeamDetail, TeamMatch, TeamSummary, TeamYearSummary, TeamEventDetail, PaginatedResponse
+from backend.src.api.schemas import TeamDetail, TeamYearSummary, TeamEventDetail, PaginatedResponse
 from backend.src.api.utils import sort_and_page
 from backend.src.core.constants import CURR_YEAR
 from backend.src.storage import create_storage
@@ -12,9 +12,9 @@ router = APIRouter(tags=["Team"])
 @router.get("/v1/teams", response_model=PaginatedResponse)
 def list_teams(
     season: str = Query(CURR_YEAR, description="Season year"),
-    metric: str = Query("norm_epa", description="Sort metric: norm_epa, total, auto, teleop, endgame"),
+    metric: str = Query("total", description="Sort metric: total, norm_epa, auto, teleop, endgame"),
     ascending: bool = Query(False),
-    limit: int = Query(50, ge=1, le=1000),
+    limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     search: Optional[str] = Query(None, description="Filter by team number prefix"),
     country: Optional[str] = Query(None, description="Filter by country code"),
@@ -22,24 +22,28 @@ def list_teams(
 ):
     """List all teams in a season, sorted by a metric. Supports pagination, search, and location filters."""
     storage = get_storage(season)
-    teams = storage.load_all_teams()
+    teams = storage.load_all_teams(search=search, country=country, state=state)
+    ranks = storage.load_all_team_ranks()
+    infos = storage.load_all_teams_info()
 
     results = []
     for team, params in teams.items():
-        if search is not None and search not in str(team):
-            continue
-        if country is not None and (params.get("team_country") or "").lower() != country.lower():
-            continue
-        if state is not None and (params.get("team_state") or "").lower() != state.lower():
-            continue
+        tr = ranks.get(team, {})
+        info = infos.get(team)
         results.append({
             "team": team,
+            "name": info.get("name") if info else None,
             "total": float(params["mean"][0]),
             "auto": float(params["mean"][1]),
             "teleop": float(params["mean"][2]),
             "endgame": float(params["mean"][3]),
             "norm_epa": params["norm_epa"],
             "matches": params["count"],
+            "rank": tr.get("rank"),
+            "country": params.get("team_country"),
+            "state": params.get("team_state"),
+            "var": params["var"].tolist(),
+            "n": params["n"],
         })
 
     return sort_and_page(results, {
@@ -50,7 +54,7 @@ def list_teams(
         "endgame": lambda x: x["endgame"],
         "team": lambda x: x["team"],
         "matches": lambda x: x["matches"],
-    }, metric, ascending, offset, limit, default_metric="norm_epa")
+    }, metric, ascending, offset, limit, default_metric="total")
 
 
 @router.get("/v1/team/{team}", response_model=TeamDetail)
@@ -60,6 +64,8 @@ def get_team(team: int, season: str = Query(CURR_YEAR)):
     params = storage.load_team(team)
     if params is None:
         raise HTTPException(status_code=404, detail=f"Team {team} not found in season {season}")
+
+    info = storage.load_team_info(team)
 
     matches = storage.load_team_matches(team)
     team_matches = []
@@ -76,6 +82,7 @@ def get_team(team: int, season: str = Query(CURR_YEAR)):
 
     return {
         "team": team,
+        "name": info.get("name") if info else None,
         "season": season,
         "total": float(params["mean"][0]),
         "auto": float(params["mean"][1]),
@@ -101,9 +108,9 @@ def get_team_years(team: int):
 
     result = []
     for y in years:
-        s = create_storage(y["season"], "")
-        params = s.load_team(team)
-        ranks = s.load_all_team_ranks().get(team, {})
+        storage.season_id = y["season"]
+        params = storage.load_team(team)
+        ranks = storage.load_all_team_ranks().get(team, {})
         mean = params["mean"] if params is not None else y["mean"]
         result.append({
             "season": y["season"],

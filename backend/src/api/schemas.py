@@ -13,12 +13,18 @@ class PaginatedResponse(BaseModel):
 
 class TeamSummary(BaseModel):
     team: int
+    name: Optional[str] = None
     total: float
     auto: float
     teleop: float
     endgame: float
     norm_epa: Optional[float] = None
     matches: int
+    rank: Optional[int] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    var: Optional[List[float]] = None
+    n: Optional[float] = None
 
 
 class TeamMatch(BaseModel):
@@ -29,10 +35,12 @@ class TeamMatch(BaseModel):
     win_prob: Optional[float] = None
     is_elim: bool = False
     processed_at: Optional[str] = None
+    mean_pre: Optional[List[float]] = None
 
 
 class TeamDetail(BaseModel):
     team: int
+    name: Optional[str] = None
     season: str
     total: float
     auto: float
@@ -99,6 +107,11 @@ class TeamEventDetail(BaseModel):
 class EventSummary(BaseModel):
     event_code: str
     event_type: Optional[str] = None
+    name: Optional[str] = None
+    start: Optional[str] = None
+    end: Optional[str] = None
+    location: Optional[Location] = None
+    region_code: Optional[str] = None
     team_count: int
     epa_max: Optional[float] = None
     epa_mean: Optional[float] = None
@@ -239,18 +252,6 @@ class TeamInfo(BaseModel):
     website: Optional[str] = None
 
 
-# ── Site (frontend-optimized bundles) ──
-
-class TeamInfo(BaseModel):
-    team: int
-    name: Optional[str] = None
-    school_name: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    country: Optional[str] = None
-    rookie_year: Optional[int] = None
-
-
 class TeamSeasonSummary(BaseModel):
     team: int
     season: str
@@ -279,6 +280,7 @@ class SiteTeamPage(BaseModel):
     matches: List[TeamMatch]
     season_meta: SeasonMeta
     event_names: Dict[str, str]
+    events_meta: Dict[str, Dict[str, Optional[str]]]
 
 
 class SiteEventStanding(BaseModel):

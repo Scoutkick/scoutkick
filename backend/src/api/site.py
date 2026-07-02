@@ -1,4 +1,4 @@
-from collections import defaultdict
+import json
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Query, HTTPException
@@ -6,9 +6,7 @@ from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
 from backend.src.api.schemas import (
     SiteTeamPage, SiteEventPage, SiteMatchPage,
-    SiteTeamLight, SiteEventLight, SeasonMeta,
-    TeamInfo, TeamSeasonSummary, EventMatch, EventMatchTeam,
-    UpcomingMatch,
+    SiteTeamLight, SiteEventLight,
 )
 from backend.src.core.constants import CURR_YEAR
 
@@ -26,13 +24,18 @@ def _load_season_meta(storage) -> Optional[dict]:
 
 
 @router.get("/v1/site/teams/all", response_model=List[SiteTeamLight])
-def site_teams_all():
+def site_teams_all(
+    limit: int = Query(500, ge=1, le=10000),
+    offset: int = Query(0, ge=0),
+):
     """Lightweight list of all teams with name (for search autocomplete)."""
     storage = get_storage(CURR_YEAR)
     infos = storage.load_all_teams_info()
+    all_teams = sorted(infos.items())
+    page = all_teams[offset:offset + limit]
     return [
         {"team": t, "name": info.get("name")}
-        for t, info in sorted(infos.items())
+        for t, info in page
     ]
 
 
@@ -84,9 +87,21 @@ def site_team_page(
             "win_prob": m["win_prob"],
             "is_elim": bool(m["is_elim"]),
             "processed_at": m["processed_at"],
+            "mean_pre": json.loads(m["mean_json_pre"]) if m.get("mean_json_pre") else None,
         })
 
     ranks = storage.load_all_team_ranks().get(team, {})
+
+    events_meta: Dict[str, Dict] = {}
+    for e in all_events:
+        loc = e.get("location") or {}
+        events_meta[e["event_code"]] = {
+            "start": e.get("start"),
+            "end": e.get("end"),
+            "city": loc.get("city"),
+            "state": loc.get("state"),
+            "country": loc.get("country"),
+        }
 
     return {
         "team_info": {
@@ -122,6 +137,7 @@ def site_team_page(
         "matches": team_matches,
         "season_meta": season_meta or {},
         "event_names": event_names,
+        "events_meta": events_meta,
     }
 
 

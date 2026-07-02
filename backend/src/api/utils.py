@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 
 def sort_and_page(

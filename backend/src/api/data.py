@@ -1,10 +1,11 @@
 import logging
 import threading
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from backend.src.services.pipeline_service import EPAPipeline
 from backend.src.api.deps import DB_PATH
+from backend.src.core.constants import CURR_YEAR
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,17 @@ def _run_pipelines(seasons: list[str], db_path: str):
         pipeline_status["results"] = results
     total = sum(r["teams"] for r in results.values())
     logger.info("All pipelines complete. Total teams trained: %d", total)
+
+
+@router.post("/v1/data/run")
+def run_data_pipeline(season: str = Query(CURR_YEAR)):
+    """Trigger the EPA pipeline for a season. Runs in background."""
+    with _pipeline_lock:
+        if pipeline_status["state"] == "running":
+            return {"status": "already_running", "current_season": pipeline_status.get("current_season")}
+    thread = threading.Thread(target=_run_pipelines, args=([season], DB_PATH))
+    thread.start()
+    return {"status": "started", "season": season}
 
 
 @router.get("/v1/data/status")

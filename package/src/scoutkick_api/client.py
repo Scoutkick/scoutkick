@@ -72,11 +72,14 @@ class ScoutKick:
         limit: int = 50,
         offset: int = 0,
         search: str | None = None,
+        country: str | None = None,
+        state: str | None = None,
     ) -> PaginatedResponse:
         """List all teams in a season, sorted by a metric."""
         return self._paginated("/v1/teams", {
             "season": season, "metric": metric, "ascending": ascending,
             "limit": limit, "offset": offset, "search": search,
+            "country": country, "state": state,
         })
 
     def get_team(self, team: int, season: str = "2025") -> dict:
@@ -140,6 +143,10 @@ class ScoutKick:
         self,
         season: str = "2025",
         event_type: str | None = None,
+        region: str | None = None,
+        country: str | None = None,
+        state: str | None = None,
+        search: str | None = None,
         metric: str = "epa_max",
         ascending: bool = False,
         limit: int = 50,
@@ -148,6 +155,8 @@ class ScoutKick:
         """List all events in a season with aggregate EPA stats."""
         return self._paginated("/v1/events", {
             "season": season, "event_type": event_type,
+            "region": region, "country": country,
+            "state": state, "search": search,
             "metric": metric, "ascending": ascending,
             "limit": limit, "offset": offset,
         })

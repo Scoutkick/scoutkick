@@ -2,7 +2,6 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from backend.src.api.deps import get_storage
 from backend.src.api.schemas import DistributionResponse, PaginatedResponse, SeasonMeta
-from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["Season"])
 

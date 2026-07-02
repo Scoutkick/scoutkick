@@ -18,7 +18,7 @@ def calibrate_score_sd(
     matches: Optional[List[Dict]] = None,
 ) -> float:
     if matches is None:
-        matches = get_matches(cleaner)
+        matches, _ = get_matches(cleaner)
 
     if not matches:
         logger.warning("calibrate_score_sd: no matches found for %s, using default", season_id)
@@ -53,7 +53,7 @@ def calibrate_component_means(
     matches: Optional[List[Dict]] = None,
 ) -> np.ndarray:
     if matches is None:
-        matches = get_matches(cleaner)
+        matches, _ = get_matches(cleaner)
 
     if not matches:
         return np.zeros(FTC_VECTOR_SIZE)

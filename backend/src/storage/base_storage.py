@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 
@@ -89,11 +89,20 @@ class BaseStorage(ABC):
             return None
         return self._row_to_team(rows[0])
 
-    def load_all_teams(self) -> Dict[int, Dict]:
-        rows = self._execute(
-            "SELECT * FROM team_seasons WHERE season = ?",
-            (self.season_id,),
-        )
+    def load_all_teams(self, search: Optional[str] = None, country: Optional[str] = None,
+                       state: Optional[str] = None) -> Dict[int, Dict]:
+        sql = "SELECT * FROM team_seasons WHERE season = ?"
+        params: list = [self.season_id]
+        if search is not None:
+            sql += " AND team LIKE ?"
+            params.append(f"%{search}%")
+        if country is not None:
+            sql += " AND team_country = ?"
+            params.append(country)
+        if state is not None:
+            sql += " AND team_state = ?"
+            params.append(state)
+        rows = self._execute(sql, tuple(params))
         return {r["team"]: self._row_to_team(r) for r in rows}
 
     def load_season_teams(self, season_id: str) -> Dict[int, Dict]:
@@ -276,6 +285,19 @@ class BaseStorage(ABC):
             "SELECT * FROM team_matches WHERE season = ? ORDER BY event_code, match_id",
             (self.season_id,),
         )
+        return [dict(r) for r in rows]
+
+    def load_noteworthy_matches(self, limit: int = 20) -> List[Dict]:
+        rows = self._execute("""
+            SELECT event_code, match_id, is_elim,
+                   MAX(ABS(COALESCE(epa_post, 0) - COALESCE(epa_pre, 0))) as max_epa_delta,
+                   MIN(ABS(COALESCE(win_prob, 0.5) - 0.5)) as min_wp_dist
+            FROM team_matches
+            WHERE season = ?
+            GROUP BY event_code, match_id
+            ORDER BY max_epa_delta DESC
+            LIMIT ?
+        """, (self.season_id, limit * 10))
         return [dict(r) for r in rows]
 
     # ── seasons ──

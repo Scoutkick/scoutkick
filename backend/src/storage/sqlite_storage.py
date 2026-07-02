@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 from backend.src.storage.base_storage import BaseStorage
 
@@ -13,8 +13,14 @@ class SQLiteStorage(BaseStorage):
         super().__init__(season_id)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._ensure_tables()
         self._check_schema_version()
+
+    def close(self):
+        self._conn.close()
 
     def _check_schema_version(self):
         rows = self._execute("SELECT version FROM _schema_version")
@@ -26,34 +32,24 @@ class SQLiteStorage(BaseStorage):
             )
 
     def _execute(self, sql: str, params: tuple = ()) -> List[dict]:
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        try:
-            cur = conn.execute(sql, params)
-            if cur.description:
-                rows = cur.fetchall()
-                conn.commit()
-                return [dict(r) for r in rows]
-            conn.commit()
-            return []
-        finally:
-            conn.close()
+        cur = self._conn.execute(sql, params)
+        if cur.description:
+            rows = cur.fetchall()
+            self._conn.commit()
+            return [dict(r) for r in rows]
+        self._conn.commit()
+        return []
 
     def _execute_batch(self, sql: str, params_list: list) -> None:
         if not params_list:
             return
-        conn = sqlite3.connect(str(self.db_path))
-        conn.execute("PRAGMA journal_mode=WAL")
         try:
-            conn.execute("BEGIN")
-            conn.executemany(sql, params_list)
-            conn.commit()
+            self._conn.execute("BEGIN")
+            self._conn.executemany(sql, params_list)
+            self._conn.commit()
         except Exception:
-            conn.rollback()
+            self._conn.rollback()
             raise
-        finally:
-            conn.close()
 
     def save_team_matches_bulk(self, records: list):
         sql = """
@@ -134,6 +130,48 @@ class SQLiteStorage(BaseStorage):
         for i in range(0, len(params_list), 500):
             self._execute_batch(sql, params_list[i:i + 500])
 
+    def save_team_info_bulk(self, records: list):
+        sql = """
+            INSERT INTO teams (team, name, school_name, city, state, country,
+                               rookie_year, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(team) DO UPDATE SET
+                name        = COALESCE(excluded.name, teams.name),
+                school_name = COALESCE(excluded.school_name, teams.school_name),
+                city        = COALESCE(excluded.city, teams.city),
+                state       = COALESCE(excluded.state, teams.state),
+                country     = COALESCE(excluded.country, teams.country),
+                rookie_year = COALESCE(excluded.rookie_year, teams.rookie_year),
+                updated_at  = datetime('now')
+        """
+        params_list = [
+            (r["team"], r.get("name"), r.get("school_name"),
+             r.get("city"), r.get("state"), r.get("country"),
+             r.get("rookie_year"))
+            for r in records
+        ]
+        for i in range(0, len(params_list), 500):
+            self._execute_batch(sql, params_list[i:i + 500])
+
+    def save_team_ranks_bulk(self, records: list):
+        sql = """
+            UPDATE team_seasons SET
+                rank = ?, country_rank = ?, state_rank = ?, district_rank = ?,
+                country_team_count = ?, state_team_count = ?, district_team_count = ?,
+                team_country = ?, team_state = ?, team_district = ?
+            WHERE team = ? AND season = ?
+        """
+        params_list = [
+            (r["rank"], r.get("country_rank"), r.get("state_rank"),
+             r.get("district_rank"), r.get("country_team_count"),
+             r.get("state_team_count"), r.get("district_team_count"),
+             r.get("team_country"), r.get("team_state"), r.get("team_district"),
+             r["team"], self.season_id)
+            for r in records
+        ]
+        for i in range(0, len(params_list), 500):
+            self._execute_batch(sql, params_list[i:i + 500])
+
     def load_team_events_with_metadata(self, team: int) -> list:
         import json
         rows = self._execute("""
@@ -180,14 +218,19 @@ class SQLiteStorage(BaseStorage):
             self._execute_batch(sql, params_list[i:i + 500])
 
     def _ensure_tables(self):
-        conn = sqlite3.connect(str(self.db_path))
-        old_schema = conn.execute(
+        old_schema = self._conn.execute(
             "SELECT sql FROM sqlite_master WHERE tbl_name='team_matches' AND sql NOT LIKE '%event_code%match_id%'"
         ).fetchone()
         if old_schema:
-            conn.execute("DROP TABLE IF EXISTS team_matches")
+            count = self._conn.execute("SELECT COUNT(*) FROM team_matches").fetchone()[0]
+            if count > 0:
+                raise RuntimeError(
+                    f"Refusing to drop team_matches with {count} rows. "
+                    "Delete the DB manually or write a proper migration."
+                )
+            self._conn.execute("DROP TABLE IF EXISTS team_matches")
 
-        conn.executescript("""
+        self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS _schema_version (
                 version INTEGER NOT NULL
             );
@@ -289,14 +332,13 @@ class SQLiteStorage(BaseStorage):
         ]
         for col_name, col_type in rank_cols:
             try:
-                conn.execute(f"ALTER TABLE team_seasons ADD COLUMN {col_name} {col_type} DEFAULT NULL")
+                self._conn.execute(f"ALTER TABLE team_seasons ADD COLUMN {col_name} {col_type} DEFAULT NULL")
             except sqlite3.OperationalError:
                 pass
 
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO _schema_version (version) VALUES (?) "
             "ON CONFLICT(rowid) DO UPDATE SET version = excluded.version",
             (SCHEMA_VERSION,),
         )
-        conn.commit()
-        conn.close()
+        self._conn.commit()

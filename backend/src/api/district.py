@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import District, PaginatedResponse
+from backend.src.api.schemas import PaginatedResponse
 from backend.src.core.constants import CURR_YEAR
 
 router = APIRouter(tags=["District"])

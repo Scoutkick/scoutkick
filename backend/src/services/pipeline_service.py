@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import logging
 from collections import defaultdict
@@ -88,7 +89,11 @@ class EPAPipeline:
 
     def _fetch_matches(self) -> List[Dict]:
         logger.info("Fetching matches from FTCscout...")
-        matches = get_matches(self.cleaner)
+        matches, team_meta = get_matches(self.cleaner)
+        if team_meta:
+            for tn, info in team_meta.items():
+                self.storage.save_team_info({"team": tn, **info})
+            logger.info("Cached metadata for %d teams from match data.", len(team_meta))
         logger.info("Found %d matches.", len(matches))
         return matches
 
@@ -164,10 +169,13 @@ class EPAPipeline:
         )
 
         tl = m.get("tournament_level")
-        is_elim = tl in ("Semis", "Finals")
+        is_elim = tl in ("Semis", "Finals", "Quarterfinals", "DoubleElim", "Playoff")
 
+        match_start = m.get("start_date") or m.get("scheduled_start")
         for team_num, attrib in attributions.items():
             self.engine.update_team(team_num, attrib, is_elim=is_elim)
+            if match_start:
+                self.engine.match_dates[team_num] = match_start
 
         records = []
         for team in red_teams + blue_teams:
@@ -215,21 +223,23 @@ class EPAPipeline:
         return records
 
     def _cache_team_metadata(self, teams: Set[int]):
-        cached = self.storage.load_all_teams_info()
-        missing = [t for t in teams if t not in cached]
-        if not missing:
-            logger.info("All %d teams already have cached metadata.", len(teams))
+        rows = self.storage._execute("SELECT COUNT(*) FROM teams")
+        cached_count = rows[0]["COUNT(*)"]
+        if cached_count >= len(teams):
             return
 
-        fetched = 0
-        for team in missing:
+        all_infos = self.storage.load_all_teams_info()
+        missing = [t for t in teams if t not in all_infos]
+        if not missing:
+            return
+
+        def _fetch(team: int) -> bool:
             try:
                 resp = requests.get(
                     f"{FTCSCOUT_REST_URL}/rest/v1/teams/{team}", timeout=10
                 )
                 if resp.status_code != 200:
-                    logger.warning("  Team %d: FTCScout returned %d", team, resp.status_code)
-                    continue
+                    return False
                 data = resp.json()
                 self.storage.save_team_info({
                     "team": data.get("number", team),
@@ -240,9 +250,17 @@ class EPAPipeline:
                     "country": data.get("country"),
                     "rookie_year": data.get("rookieYear"),
                 })
-                fetched += 1
-            except Exception as e:
-                logger.warning("  Failed to fetch info for team %d: %s", team, e)
+                return True
+            except Exception:
+                return False
+
+        fetched = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+            for i, ok in enumerate(pool.map(_fetch, missing), 1):
+                if ok:
+                    fetched += 1
+                if i % 500 == 0 or i == len(missing):
+                    logger.info("  Team metadata: %d/%d (%d ok)", i, len(missing), fetched)
         logger.info("Cached metadata for %d/%d new teams.", fetched, len(missing))
 
     def _compute_and_save_ranks(self, norm_epas: Dict[int, float]):
@@ -251,13 +269,15 @@ class EPAPipeline:
         team_entries = []
         for team, norm_epa in norm_epas.items():
             info = teams_info.get(team, {})
+            raw_epa = float(self.engine.epas[team].mean[0])
             team_entries.append({
                 "team": team,
+                "raw_epa": raw_epa,
                 "norm_epa": norm_epa or 0,
                 "country": (info.get("country") or "").strip(),
                 "state": (info.get("state") or "").strip(),
             })
-        team_entries.sort(key=lambda x: x["norm_epa"], reverse=True)
+        team_entries.sort(key=lambda x: x["raw_epa"], reverse=True)
 
         total_count = len(team_entries)
 
@@ -269,11 +289,11 @@ class EPAPipeline:
             if entry["state"]:
                 state_buckets[entry["state"]].append(entry)
 
-        # Sort each bucket by norm_epa desc and assign rank
+        # Sort each bucket by raw_epa desc and assign rank
         for bucket in country_buckets.values():
-            bucket.sort(key=lambda x: x["norm_epa"], reverse=True)
+            bucket.sort(key=lambda x: x["raw_epa"], reverse=True)
         for bucket in state_buckets.values():
-            bucket.sort(key=lambda x: x["norm_epa"], reverse=True)
+            bucket.sort(key=lambda x: x["raw_epa"], reverse=True)
 
         rank_records = []
         for rank, entry in enumerate(team_entries, 1):

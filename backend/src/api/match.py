@@ -1,7 +1,8 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import JSONResponse
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import MatchDetail, MatchSummary, PaginatedResponse
+from backend.src.api.schemas import MatchDetail, PaginatedResponse
 from backend.src.api.utils import sort_and_page
 from backend.src.core.constants import CURR_YEAR
 
@@ -28,9 +29,11 @@ def list_matches(
         if team not in all_teams:
             raise HTTPException(status_code=404, detail=f"Team {team} not found in season {season}")
         match_list = storage.load_team_matches(team)
+        capped = False
     else:
         match_list = []
-        for t in list(all_teams)[:50]:
+        capped = len(all_teams) > 500
+        for t in list(all_teams)[:500]:
             match_list.extend(storage.load_team_matches(t))
 
     if event is not None:
@@ -41,13 +44,19 @@ def list_matches(
     for m in match_list:
         m["is_elim"] = bool(m["is_elim"])
 
-    return sort_and_page(match_list, {
+    result = sort_and_page(match_list, {
         "processed_at": lambda x: x["processed_at"] if "processed_at" in x else "",
         "match_id": lambda x: int(x["match_id"]) if x["match_id"].isdigit() else x["match_id"],
         "epa_pre": lambda x: x["epa_pre"] or 0,
         "epa_post": lambda x: x["epa_post"] or 0,
         "win_prob": lambda x: x["win_prob"] or 0,
     }, metric, ascending, offset, limit, default_metric="processed_at")
+
+    if team is None and capped:
+        response = JSONResponse(content=result)
+        response.headers["X-Warnings"] = "Results capped at 500 teams. Use ?team filter for complete data."
+        return response
+    return result
 
 
 @router.get("/v1/noteworthy")
@@ -57,13 +66,18 @@ def get_noteworthy_matches(
 ):
     """Return noteworthy matches: biggest EPA swings, biggest upsets, closest matches."""
     storage = get_storage(season)
-    all_matches = storage.load_all_matches()
-    if not all_matches:
+    candidates = storage.load_noteworthy_matches(limit=limit)
+    if not candidates:
         raise HTTPException(status_code=404, detail=f"No matches found for season {season}")
+
+    # Load full rows only for candidate matches
+    all_matches = storage.load_all_matches()
+    candidate_keys = {(c["event_code"], c["match_id"]) for c in candidates}
+    matched = [m for m in all_matches if (m["event_code"], m["match_id"]) in candidate_keys]
 
     # Group by (event_code, match_id) to get per-match aggregates
     match_groups: dict = {}
-    for m in all_matches:
+    for m in matched:
         key = (m["event_code"], m["match_id"])
         if key not in match_groups:
             match_groups[key] = {

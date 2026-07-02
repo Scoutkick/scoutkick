@@ -1,5 +1,7 @@
+import json
 from typing import Dict, List, Optional
 
+import numpy as np
 import psycopg2
 import psycopg2.extras
 
@@ -93,6 +95,31 @@ class PostgresStorage(BaseStorage):
                 num_teams         INTEGER DEFAULT 0,
                 updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
             );
+
+            CREATE TABLE IF NOT EXISTS events (
+                event_code    TEXT    NOT NULL,
+                season        TEXT    NOT NULL,
+                name          TEXT    DEFAULT NULL,
+                event_type    TEXT    DEFAULT NULL,
+                start         TEXT    DEFAULT NULL,
+                end           TEXT    DEFAULT NULL,
+                location_json TEXT    DEFAULT NULL,
+                region_code   TEXT    DEFAULT NULL,
+                league_code   TEXT    DEFAULT NULL,
+                updated_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (event_code, season)
+            );
+
+            CREATE TABLE IF NOT EXISTS teams (
+                team       INTEGER PRIMARY KEY NOT NULL,
+                name       TEXT    DEFAULT NULL,
+                school_name TEXT   DEFAULT NULL,
+                city       TEXT    DEFAULT NULL,
+                state      TEXT    DEFAULT NULL,
+                country    TEXT    DEFAULT NULL,
+                rookie_year INTEGER DEFAULT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
         """)
 
     def _execute_one(self, query: str, params: tuple = ()) -> Optional[dict]:
@@ -126,8 +153,8 @@ class PostgresStorage(BaseStorage):
             return None
         r = dict(rows[0])
         if r["component_means_json"]:
-            r["component_means"] = __import__("numpy").array(
-                __import__("json").loads(r["component_means_json"])
+            r["component_means"] = np.array(
+                json.loads(r["component_means_json"])
             )
         else:
             r["component_means"] = None

@@ -30,3 +30,6 @@ cache/
 .env.*
 
 *.log
+
+# desloppify
+.desloppify/

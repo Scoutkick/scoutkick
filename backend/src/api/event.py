@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from backend.src.api.deps import get_storage
-from backend.src.api.schemas import EventDetail, EventMatch, EventPredictionsResponse, EventSummary, PaginatedResponse
+from backend.src.api.schemas import EventDetail, EventPredictionsResponse, PaginatedResponse
 from backend.src.api.utils import sort_and_page
 from backend.src.core.constants import CURR_YEAR
 
@@ -14,9 +14,11 @@ def list_events(
     event_type: Optional[str] = Query(None, description="Filter by event type (Qualifier, Championship, etc.)"),
     region: Optional[str] = Query(None, description="Filter by region code"),
     country: Optional[str] = Query(None, description="Filter by country (from event location)"),
+    state: Optional[str] = Query(None, description="Filter by state/province (from event location)"),
+    search: Optional[str] = Query(None, description="Filter by event name or code substring"),
     metric: str = Query("epa_max", description="Sort metric: epa_max, epa_mean, teams, event_code"),
     ascending: bool = Query(False),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
     """List all events in a season with aggregate EPA stats per event."""
@@ -35,11 +37,33 @@ def list_events(
             loc = meta.get("location") or {}
             if (loc.get("country") or "").lower() != country.lower():
                 continue
+        if state is not None:
+            loc = meta.get("location") or {}
+            if (loc.get("state") or "").lower() != state.lower():
+                continue
+        if search is not None:
+            name = (meta.get("name") or "").lower()
+            code = e["event_code"].lower()
+            q = search.lower()
+            if q not in name and q not in code:
+                continue
         ec = e["event_code"]
         if ec not in event_map:
+            meta = events_meta.get(ec, {})
+            loc = meta.get("location")
             event_map[ec] = {
                 "event_code": ec,
                 "event_type": e.get("event_type"),
+                "name": meta.get("name"),
+                "start": meta.get("start"),
+                "end": meta.get("end"),
+                "location": {
+                    "venue": loc.get("venue") if loc else None,
+                    "city": loc.get("city") if loc else None,
+                    "state": loc.get("state") if loc else None,
+                    "country": loc.get("country") if loc else None,
+                } if loc else None,
+                "region_code": meta.get("region_code"),
                 "team_count": 0,
                 "epa_max": float("-inf"),
                 "epa_mean_sum": 0.0,
@@ -58,6 +82,11 @@ def list_events(
         results.append({
             "event_code": ec,
             "event_type": info["event_type"],
+            "name": info["name"],
+            "start": info["start"],
+            "end": info["end"],
+            "location": info["location"],
+            "region_code": info["region_code"],
             "team_count": info["team_count"],
             "epa_max": info["epa_max"] if info["epa_max"] != float("-inf") else None,
             "epa_mean": info["epa_mean_sum"] / info["epa_mean_count"] if info["epa_mean_count"] > 0 else None,

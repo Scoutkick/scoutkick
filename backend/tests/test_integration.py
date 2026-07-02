@@ -63,15 +63,30 @@ class TestPipelineIntegration(unittest.TestCase):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.tmp.close()
         self.db_path = self.tmp.name
+        self._storages = []
 
     def tearDown(self):
-        os.unlink(self.db_path)
+        for s in self._storages:
+            try:
+                s.close()
+            except Exception:
+                pass
+        try:
+            os.unlink(self.db_path)
+        except PermissionError:
+            pass
+
+    def _tracked_storage(self, season="2025"):
+        s = create_storage(season, self.db_path)
+        self._storages.append(s)
+        return s
 
     def _run_pipeline(self, season="2025", calibrate=False):
         with patch("backend.src.services.pipeline_service.get_matches") as mock_get:
-            mock_get.return_value = FAKE_MATCHES
+            mock_get.return_value = (FAKE_MATCHES, {})
             pipeline = EPAPipeline(season, db_path=self.db_path, calibrate=calibrate)
             engine = pipeline.run()
+            self._storages.append(pipeline.storage)
             return pipeline, engine
 
     def test_pipeline_returns_engine(self):
@@ -95,25 +110,25 @@ class TestPipelineIntegration(unittest.TestCase):
 
     def test_storage_has_teams(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         teams = storage.load_all_teams()
         self.assertGreaterEqual(len(teams), 14)
 
     def test_storage_has_team_matches(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         matches = storage.load_team_matches(101)
         self.assertGreaterEqual(len(matches), 4)
 
     def test_storage_has_team_events(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         events = storage.load_team_events()
         self.assertGreaterEqual(len(events), 14)
 
     def test_storage_has_season_meta(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         meta = storage.load_season_meta()
         self.assertIsNotNone(meta)
         self.assertIn("score_sd", meta)
@@ -122,7 +137,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
     def test_norm_epa_saved(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         teams = storage.load_all_teams()
         for t in teams.values():
             self.assertIn("norm_epa", t)
@@ -130,7 +145,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
     def test_epa_pre_post_on_matches(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         matches = storage.load_team_matches(101)
         for m in matches:
             self.assertIn("epa_pre", m)
@@ -139,7 +154,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
     def test_win_probability_recorded(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         matches = storage.load_team_matches(101)
         for m in matches:
             self.assertGreaterEqual(m["win_prob"], 0.0)
@@ -147,7 +162,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
     def test_elim_matches_marked(self):
         self._run_pipeline()
-        storage = create_storage("2025", self.db_path)
+        storage = self._tracked_storage("2025")
         matches = storage.load_team_matches(101)
         elims = [m for m in matches if m["is_elim"]]
         self.assertGreater(len(elims), 0)
@@ -157,9 +172,10 @@ class TestPipelineIntegration(unittest.TestCase):
         epa_101_first = engine1.get_team(101).mean[0]
 
         with patch("backend.src.services.pipeline_service.get_matches") as mock_get:
-            mock_get.return_value = FAKE_MATCHES
+            mock_get.return_value = (FAKE_MATCHES, {})
             pipeline2 = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
             engine2 = pipeline2.run()
+            self._storages.append(pipeline2.storage)
             epa_101_second = engine2.get_team(101).mean[0]
 
         self.assertEqual(epa_101_first, epa_101_second,
@@ -178,23 +194,34 @@ class TestPipelineWithCalibration(unittest.TestCase):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.tmp.close()
         self.db_path = self.tmp.name
+        self._storages = []
 
     def tearDown(self):
-        os.unlink(self.db_path)
+        for s in self._storages:
+            try:
+                s.close()
+            except Exception:
+                pass
+        try:
+            os.unlink(self.db_path)
+        except PermissionError:
+            pass
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_calibrated_pipeline_runs(self, mock_get):
-        mock_get.return_value = FAKE_MATCHES
+        mock_get.return_value = (FAKE_MATCHES, {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=True)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         self.assertIsNotNone(engine)
         self.assertGreater(len(engine.epas), 0)
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_calibrated_score_sd_reasonable(self, mock_get):
-        mock_get.return_value = FAKE_MATCHES
+        mock_get.return_value = (FAKE_MATCHES, {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=True)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         self.assertGreater(engine.score_sd, 0)
         self.assertLess(engine.score_sd, 200)
 
@@ -205,15 +232,25 @@ class TestPipelineCrossSeason(unittest.TestCase):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.tmp.close()
         self.db_path = self.tmp.name
+        self._storages = []
 
     def tearDown(self):
-        os.unlink(self.db_path)
+        for s in self._storages:
+            try:
+                s.close()
+            except Exception:
+                pass
+        try:
+            os.unlink(self.db_path)
+        except PermissionError:
+            pass
 
     def _run_season(self, season, matches):
         with patch("backend.src.services.pipeline_service.get_matches") as mock_get:
-            mock_get.return_value = matches
+            mock_get.return_value = (matches, {})
             pipeline = EPAPipeline(season, db_path=self.db_path, calibrate=False)
             engine = pipeline.run()
+            self._storages.append(pipeline.storage)
             return engine
 
     def test_init_with_prior_season_data(self):
@@ -225,7 +262,7 @@ class TestPipelineCrossSeason(unittest.TestCase):
         self.assertIn("2024", priors)
 
         with patch("backend.src.services.pipeline_service.get_matches") as mock_get:
-            mock_get.return_value = [_make_match(2, "QUAL2", "Qualifier", [101, 102], [201, 202], 90, 50)]
+            mock_get.return_value = ([_make_match(2, "QUAL2", "Qualifier", [101, 102], [201, 202], 90, 50)], {})
             pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
             engine = pipeline.run()
             self.assertIsNotNone(engine)
@@ -237,47 +274,60 @@ class TestPipelineEdgeCases(unittest.TestCase):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.tmp.close()
         self.db_path = self.tmp.name
+        self._storages = []
 
     def tearDown(self):
-        os.unlink(self.db_path)
+        for s in self._storages:
+            try:
+                s.close()
+            except Exception:
+                pass
+        try:
+            os.unlink(self.db_path)
+        except PermissionError:
+            pass
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_empty_matches(self, mock_get):
-        mock_get.return_value = []
+        mock_get.return_value = ([], {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         self.assertIsNone(engine)
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_single_match(self, mock_get):
-        mock_get.return_value = [
+        mock_get.return_value = ([
             _make_match(1, "ONLY", "Qualifier", [101, 102], [201, 202], 100, 50)
-        ]
+        ], {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         self.assertIsNotNone(engine)
         self.assertEqual(len(engine.epas), 4)
         self.assertGreater(engine.get_team(101).mean[0], engine.get_team(201).mean[0])
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_perfect_tie(self, mock_get):
-        mock_get.return_value = [
+        mock_get.return_value = ([
             _make_match(1, "EVEN", "Qualifier", [101, 102], [201, 202], 100, 100),
             _make_match(2, "EVEN", "Qualifier", [101, 102], [201, 202], 100, 100),
-        ]
+        ], {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         epa_red = engine.get_team(101).mean[0]
         epa_blue = engine.get_team(201).mean[0]
         self.assertAlmostEqual(epa_red, epa_blue, delta=1.0)
 
     @patch("backend.src.services.pipeline_service.get_matches")
     def test_large_score_disparity(self, mock_get):
-        mock_get.return_value = [
+        mock_get.return_value = ([
             _make_match(1, "BLOW", "Qualifier", [101, 102], [201, 202], 200, 10),
-        ]
+        ], {})
         pipeline = EPAPipeline("2025", db_path=self.db_path, calibrate=False)
         engine = pipeline.run()
+        self._storages.append(pipeline.storage)
         epa_101 = engine.get_team(101).mean[0]
         epa_201 = engine.get_team(201).mean[0]
         self.assertGreater(epa_101 - epa_201, 10)
